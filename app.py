@@ -112,18 +112,64 @@ def render_question_tab2(label):
     
     with sub_tab1:
         st.subheader("T-Test")
-        st.caption("Description")
         st.markdown(
-            '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
+            '<p style="font-size: 1.15rem;">Is there a difference in average salary jump between males and females?</p>',
             unsafe_allow_html=True,
         )
+
+        with st.expander("**Step 1: Prepare**", expanded=True):
+            st.markdown("""
+            In order to answer our question, we need to prepare the data first. 
+            We filtered our dataframe to all staff who were promoted to full time from associate level. 
+            \n You can see an example of the filtered dataframe below.""")
+            img_col, _ = st.columns([1, 1])
+            with img_col:
+                st.image("assets/step1_prepared_data.png", use_container_width=True)
+            st.markdown("""
+            We then calculated the salary difference between the first year they were a full professor, 
+            and the last year associate professor. \n You can see an example of the calculated dataframe below.
+            """)
+            diff_col, _ = st.columns([1, 4])
+            with diff_col:
+                st.image("assets/step1_salary_diff.png", use_container_width=True)
+            st.markdown("""
+            In total we have 545 professors that were promoted to full time from associate level.
+            """)
+        with st.expander("**Step 2: Hypotheses & Test**"):
+            st.markdown("""
+            Now we can test the hypothesis. We will use a two sample T-Test to test the hypothesis.
+            The null hypothesis is that there is no difference in the average salary jump between males and females.
+            The alternative hypothesis is that there is a difference in the average salary jump between males and females.
+            
+            **Two sample T-Test**
+            - H₀: μ(males) = μ(females)
+            - Hₐ: μ(males) ≠ μ(females)
+            - alpha = 0.05
+            t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE) 
+            \n We are using the var.equal = TRUE argument because we are assuming that the variance is equal between the two groups.
+            And since our sample size is large, we can use the t-distribution to approximate the normal distribution.
+            """)
+
+        with st.expander("**Step 3: Results**"):
+            st.markdown("""
+            After running the T-Test, we get the following results:
+            | Statistic | Value |
+            |-----------|-------|
+            | T Statistic | 1.3291 |
+            | P-Value | 0.1858 |
+            | 95% CI | [-26.21, 133.88] |
+            """)
         st.markdown("## Results")
-        st.markdown(
-            '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-            unsafe_allow_html=True,
-        )
-        # Add regression results or stats here
+        st.markdown("""
+        **Conclusion:** We fail to reject the null hypothesis
+
+        Since our p-value is 0.1858, which is greater than 0.05, we fail to reject the null hypothesis.
         
+        So we say that we do not have enough evidence to say that there is a difference in the average salary jump between males and females.
+
+        However, the T-test doesn't account for other factors which is why we need to control for other factors.
+        """)
+
     with sub_tab2:
         st.subheader(f"Controlled Models")
         m1_tab, m2_tab = st.tabs(["Base", "Interaction"])
