@@ -166,7 +166,7 @@ def render_question_tab1(label):
             st.markdown('''
             <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
                 <h4 style="color: black; margin-top: 0;">Goal</h4>
-                <p style="color: black; font-size: 1.25em;">Compare average starting salaries between male and female faculty members before controlling other variables.</p>
+                <p style="color: black; font-size: 1.25em;">Shuffle the ‘sex’ label and observe how extreme our observed difference will be to random labeling. If the difference is extreme, we can reject the null hypothesis that the average salaries are the same between males and females.</p>
                 <div style="height: 50px;"></div>
             </div>
             ''', unsafe_allow_html=True)
@@ -221,10 +221,56 @@ def render_question_tab1(label):
 
         st.markdown('<div id="permutation-test-section" style="padding-top: 10px;"></div>', unsafe_allow_html=True)
         st.markdown("## Permutation Test")
-        st.markdown(
-            '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-            unsafe_allow_html=True,
-        )
+        
+        # Initialize session state for Permutation Test block
+        if 'perm_state' not in st.session_state:
+            st.session_state.perm_state = 0
+        
+        # Permutation Test interactive block
+        if st.session_state.perm_state == 0:
+            # Initial state - Click to explore
+            st.markdown('''
+            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            </div>
+            ''', unsafe_allow_html=True)
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("Click here to explore Permutation Test", key="perm_explore", use_container_width=True):
+                    st.session_state.perm_state = 1
+                    st.rerun()
+        elif st.session_state.perm_state == 1:
+            # Goal state
+            st.markdown('''
+            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
+                <h4 style="color: black; margin-top: 0;">Goal</h4>
+                <p style="color: black; font-size: 1.25em;">Compare average starting salaries between males and females using a non-parametric approach.</p>
+                <h4 style="color: black;">Hypotheses</h4>
+                <p style="color: black;">H₀: μ<sub>males</sub> - μ<sub>females</sub> = 0</p>
+                <p style="color: black;">Hₐ: μ<sub>males</sub> - μ<sub>females</sub> ≠ 0</p>
+                <p style="color: black; font-style: italic;">(If null is true, we should expect our p-value to be large.)</p>
+                <div style="height: 20px;"></div>
+            </div>
+            ''', unsafe_allow_html=True)
+            col_spacer, col_btn = st.columns([8, 1])
+            with col_btn:
+                if st.button("Next", key="perm_goal_next"):
+                    st.session_state.perm_state = 2
+                    st.rerun()
+        else:
+            # Results state
+            perm_col_left, perm_col_right = st.columns(2)
+            with perm_col_left:
+                st.markdown('''
+                <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
+                    <h4 style="color: black; margin-top: 0;">Results</h4>
+                    <ul style="color: black; font-size: 1.1em;">
+                        <li>p-value = 0.002</li>
+                    </ul>
+                    <p style="color: black; font-weight: bold; font-size: 1.1em;">At the 5% significance level, we can reject the null hypothesis that the average salaries are the same between males and females.</p>
+                </div>
+                ''', unsafe_allow_html=True)
+            with perm_col_right:
+                st.image("perm_test.png")
 
     with sub_tab2:
         st.subheader("ANOVA and Wald Test")
