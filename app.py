@@ -5,7 +5,6 @@ import numpy as np
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import statsmodels.formula.api as smf
@@ -62,6 +61,9 @@ def _render_wald_table_with_tooltips(wald_df_display, tooltips_dict=None):
             row_cols[i + 1].text(str(val) if not isinstance(val, str) else val)
     st.caption("Hover over ℹ️ for term definitions.")
 
+import statsmodels.api as sm
+import seaborn as sns
+import scipy.stats as stats
 
 # Set page config for a wide layout
 st.set_page_config(layout="wide")
@@ -188,8 +190,53 @@ with tab_eda:
 
 # --- HELPER FUNCTIONs - put results to be displayed here
 def render_question_tab1(label):
-    st.subheader(label)
-    st.write(f"**Results Summary for {label}** ...")
+    st.subheader("Question 1: Starting Salary Analysis")
+    
+    st.markdown("""
+    **Results Summary for Q1:**
+    - Without controlling for any variables, there is a statistically significant difference in starting salaries between male and female faculty members.
+    - Using multiple linear regression (MLR) and ANOVA to control for confounding variables such as degree, year of degree, field, and rank, we still find that gender plays a significant role in starting salaries.
+    - Thus, we conclude that there is a significant discrepancy in starting salaries by gender that cannot be fully explained by the available experiential and professional factors.
+    """)
+    
+    salary_path = Path(__file__).parent / "salary.txt"
+    if salary_path.exists():
+        df = pd.read_csv(salary_path, sep=r"\s+")
+        starting_df = df[df['year'] == df['startyr']].copy()
+        
+        col_plot, col_stats = st.columns([1, 1])
+        with col_plot:
+            st.markdown("### Starting Salaries by Gender")
+            fig_box, ax_box = plt.subplots(figsize=(8, 6))
+            sns.boxplot(x='sex', y='salary', data=starting_df, ax=ax_box)
+            ax_box.set_title("Starting Salaries by Gender (Uncontrolled)")
+            ax_box.set_xlabel("Gender")
+            ax_box.set_ylabel("Starting Salary")
+            st.pyplot(fig_box)
+            st.caption("Figure: Boxplot displaying the distribution of starting salaries globally between male and female faculty.")
+            
+        with col_stats:
+            men_start = starting_df[starting_df['sex'] == 'M']['salary']
+            women_start = starting_df[starting_df['sex'] == 'F']['salary']
+            mean_diff = np.mean(men_start) - np.mean(women_start)
+            t_stat, p_val_t = stats.ttest_ind(men_start, women_start, equal_var=False)
+            
+            st.markdown("### Preliminary Statistics")
+            st.markdown(
+                f"""
+                <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; color: black; margin-bottom: 20px;">
+                    <ul style="font-size: 1.1em;">
+                        <li><strong>Mean Salary (Men):</strong> ${np.mean(men_start):.2f}</li>
+                        <li><strong>Mean Salary (Women):</strong> ${np.mean(women_start):.2f}</li>
+                        <li><strong>Mean Difference (Men - Women):</strong> ${mean_diff:.2f}</li>
+                        <li><strong>Welch t-test:</strong> t-statistic = {t_stat:.4f}, p-value = {p_val_t:.4e}</li>
+                    </ul>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+    st.divider()
     
     # Nested Tabs: Uncontrolled vs Controlled
     sub_tab1, sub_tab2 = st.tabs(["Uncontrolled", "Controlled"])
@@ -360,14 +407,64 @@ def render_question_tab1(label):
             st.markdown("## ANOVA")
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "Multiple Linear Regression (MLR) ANOVA: comparing a model predicting starting salaries with and without the `sex` variable. "
+                "Predictors include degree, year of degree, field, rank, admin duties, and starting year, with both models restricted to rows where `startyr == year`. "
+                "We test if adding `sex` significantly improves the model."
             )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            if "q1_anova_run" not in st.session_state:
+                st.session_state.q1_anova_run = False
+                
+            q1_anova_left, q1_anova_right = st.columns([1, 1])
+            with q1_anova_left:
+                if st.button("Run ANOVA", key="q1_anova_run_btn"):
+                    st.session_state.q1_anova_run = True
+            with q1_anova_right:
+                if st.button("Hide ANOVA Results", key="q1_anova_hide_btn"):
+                    st.session_state.q1_anova_run = False
+
+            if st.session_state.q1_anova_run:
+                if not salary_path.exists():
+                    st.warning("Data file `salary.txt` not found. Add it to the project directory to run the ANOVA test.")
+                else:
+                    try:
+                        df = pd.read_csv(salary_path, sep=r"\s+")
+                        starting_df = df[df['year'] == df['startyr']].copy()
+                        starting_df = starting_df.dropna(subset=['salary', 'deg', 'yrdeg', 'field', 'rank', 'admin', 'year'])
+                        
+                        model_no_sex = smf.ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year', data=starting_df).fit()
+                        model_with_sex = smf.ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year + C(sex)', data=starting_df).fit()
+                        
+                        anova_results = sm.stats.anova_lm(model_no_sex, model_with_sex)
+                        f_stat = anova_results['F'].iloc[1]
+                        p_val_anova = anova_results['Pr(>F)'].iloc[1]
+                        
+                        st.markdown("**(ANOVA Results DataFrame):**")
+                        st.dataframe(anova_results.fillna(0.0).astype(str), use_container_width=True)
+                        
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
+                                <h4 style="color: black; margin-top: 0;">Analysis</h4>
+                                <ul style="color: black; font-size: 1.1em;">
+                                    <li><strong>F-statistic:</strong> {f_stat:.4f}</li>
+                                    <li><strong>p-value:</strong> {p_val_anova:.4e}</li>
+                                </ul>
+                                <div style="height: 20px;"></div>
+                                <p style="color: black; font-weight: bold; font-size: 1.1em;">
+                                    {"At the 5% significance level, we can reject the null hypothesis, concluding that gender has a significant effect on starting salaries when controlling for other variables." if p_val_anova < 0.05 else "At the 5% significance level, we fail to reject the null hypothesis, suggesting that gender does not have a significant effect on starting salaries when controlling for other variables."}
+                                </p>
+                                <p style="color: black; font-size: 0.9em; margin-top: 20px;">
+                                    <i>Note: This matches comparing `salary ~ deg + yrdeg + C(field) + C(rank) + admin + year` vs adding `C(sex)` for `startyr == year` observation rows.</i>
+                                </p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    except Exception as e:
+                        st.error(f"Error computing ANOVA: {e}")
+            else:
+                st.info("Click 'Run ANOVA' to compute and view the comprehensive results.")
         with wald_col:
             st.markdown("## Wald Test")
             st.caption("Description")
@@ -377,22 +474,27 @@ def render_question_tab1(label):
                 "Wald test of all terms uses **HC3** robust standard errors."
             )
             st.caption("Results")
-            if not salary_path.exists():
-                st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
-                st.code(
-                    "df = pd.read_csv('salary.txt', sep=r'\\s+')\n"
-                    "df_same_salary = df[df['startyr'] == df['year']]\n"
-                    "mls_model_same_year = smf.ols(formula='salary ~ sex + deg + yrdeg + field + startyr + '\n"
-                    "    'year + rank + admin', data=df_same_salary).fit(cov_type='HC3')\n"
-                    "robust_wald_same_year = mls_model_same_year.wald_test_terms()",
-                    language="python",
-                )
-            elif robust_wald_same_year is None:
-                st.error("Error fitting model. Check data and formula.")
-            else:
-                try:
-                    wald_df = getattr(robust_wald_same_year, "result_frame", None) or getattr(
-                        robust_wald_same_year, "table", None
+            if "q1_wald_run" not in st.session_state:
+                st.session_state.q1_wald_run = False
+                
+            q1_wald_left, q1_wald_right = st.columns([1, 1])
+            with q1_wald_left:
+                if st.button("Run Wald Test", key="q1_wald_run_btn"):
+                    st.session_state.q1_wald_run = True
+            with q1_wald_right:
+                if st.button("Hide Wald Results", key="q1_wald_hide_btn"):
+                    st.session_state.q1_wald_run = False
+                    
+            if st.session_state.q1_wald_run:
+                if not salary_path.exists():
+                    st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
+                    st.code(
+                        "df = pd.read_csv('salary.txt', sep=r'\\s+')\n"
+                        "df_same_salary = df[df['startyr'] == df['year']]\n"
+                        "mls_model_same_year = smf.ols(formula='salary ~ sex + deg + yrdeg + field + startyr + '\n"
+                        "    'year + rank + admin', data=df_same_salary).fit(cov_type='HC3')\n"
+                        "robust_wald_same_year = mls_model_same_year.wald_test_terms()",
+                        language="python",
                     )
                     if wald_df is not None and hasattr(wald_df, "to_html"):
                         wald_df_display = wald_df.copy()
@@ -417,6 +519,7 @@ def render_question_tab1(label):
                         wald_tab_left, wald_tab_right = st.columns([1, 1])
                         with wald_tab_left:
                             st.dataframe(wald_df_display, use_container_width=True)
+                            
                             st.markdown("**Download results**")
                             csv_bytes = wald_df_display.to_csv(index=True).encode("utf-8")
                             st.download_button(
@@ -426,7 +529,9 @@ def render_question_tab1(label):
                                 mime="text/csv",
                                 key="wald_download",
                             )
-                        with wald_tab_right:
+                            
+                            st.divider()
+    
                             # Infer statistic and pvalue columns (statsmodels naming varies)
                             stat_col = None
                             pval_col = None
@@ -441,7 +546,7 @@ def render_question_tab1(label):
                             if pval_col is None and len(wald_df.columns) >= 2:
                                 num_cols = wald_df.select_dtypes(include=[np.number]).columns.tolist()
                                 pval_col = num_cols[1] if len(num_cols) > 1 else num_cols[0]
-
+    
                             def _bar_colors(labels, navy="#000080", red="#b22222"):
                                 return [red if "sex" in str(lb).lower() else navy for lb in labels]
 
@@ -490,8 +595,8 @@ def render_question_tab1(label):
                                     st.plotly_chart(fig_pval, use_container_width=True, key="wald_pval_bar")
                     else:
                         st.text(str(robust_wald_same_year))
-                except Exception:
-                    st.text(str(robust_wald_same_year))
+            else:
+                st.info("Click 'Run Wald Test' to process and view robustness checks.")
 
         st.subheader("MLR Test")
         mlr_base_tab, mlr_interaction_tab = st.tabs(["Base", "Interaction"])
@@ -499,8 +604,9 @@ def render_question_tab1(label):
         with mlr_base_tab:
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "This **base MLR model** predicts starting salaries using predictors such as degree, year of degree, field, rank, and administrative duties. "
+                "The `sex` variable is included to see if gender significantly impacts the starting salary baseline after controlling for these other main effects. "
+                "Because this is evaluated only on starting years, it analyzes the baseline pay entry wage gap."
             )
             st.caption("Results")
             if "mlr_base_run" not in st.session_state:
@@ -532,8 +638,9 @@ def render_question_tab1(label):
         with mlr_interaction_tab:
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "This **interaction MLR model** takes the base model further by multiplying the `sex` variable with every other covariate. "
+                "This allows us to see not just if there is a flat wage penalty for females, but if the *effect* of other factors (like getting a PhD or being in a certain field) "
+                "differs by gender. For example, do men get a higher starting salary bump for a PhD than women do?"
             )
             st.caption("Results")
             if "mlr_interaction_run" not in st.session_state:
@@ -1132,6 +1239,10 @@ def render_question_tab3(label):
                     st.info("Click the button above to run the analysis.")
     with sub_tab3:
         st.subheader("ANOVA and Wald Test")
+        st.markdown(
+            "ANOVA is used to compare the fit of the baseline MLR model strictly against a model omitting gender. "
+            "A Wald test robustly checks if the coefficients for gender significantly differ from zero under heteroskedasticity."
+        )
         anova_col, wald_col = st.columns(2)
         with anova_col:
             st.subheader("ANOVA")
