@@ -1,4 +1,31 @@
 
+#------------------------Q2: T Test-------------------------#
+salary <- read.table("salary.txt", header = TRUE)
+
+# Create new dataframe of only staff members that were promoted from 
+# associate to full professor, grouping by id and keeping their salary data.
+# Create new column salary_diff by taking difference in monthly salary between
+# first year as full professor and last year as associate professor.
+promoted <- salary %>% 
+  group_by(id) %>%
+  arrange(startyr) %>%
+  summarise(
+    sex = sex[1],
+    last_assoc_year = if (any(rank == "Assoc")) max(year[rank == "Assoc"]) else NA,
+    first_full_year = if (any(rank == "Full")) min(year[rank == "Full"]) else NA,
+    promoted_to_full = as.integer(!is.na(first_full_year) & !is.na(last_assoc_year) &
+                                    first_full_year > last_assoc_year),
+    last_assoc_salary = max(salary[year == last_assoc_year]),
+    first_full_salary = max(salary[year == first_full_year]),
+    salary_diff = first_full_salary-last_assoc_salary
+  ) %>% 
+  filter(promoted_to_full == 1) %>% 
+  select(id, sex, salary_diff)
+
+# Perform two sample T test
+t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE)
+#------------------------------------------------------------------------------#
+
 #------------------------Q3: Propensity Score Matching-------------------------#
 
 # install.packages(c("dplyr", "MatchIt", "ggplot2"))
