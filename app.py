@@ -811,7 +811,14 @@ Q2_FULL_PLOT_FILES = {
 
 def render_question_tab2(label):
     st.subheader(label)
-    st.write(f"**Results Summary for {label}** ...")
+    st.write("""**Results Summary for Q2**""")
+    st.write("""
+    - We conducted two tests to answer our question of if there is a wage discrimination between males and females who were promoted from associate to full professor. 
+    - Our t-test found that there is no difference in average salary jump between males and females. However, the t-test does not control for other factors.
+    - To control the other factors, we conducted a second test using a multiple linear regression to test the hypothesis.
+    - Using the MLR test, we found that there is a difference in first-year full professor salary between males and females. 
+    - So we concluded that there exists a wage discrimination between males and females who were promoted.
+    """)
     sub_tab1, sub_tab2 = st.tabs(["Uncontrolled", "Controlled"])
     
     with sub_tab1:
