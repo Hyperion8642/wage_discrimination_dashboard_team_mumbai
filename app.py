@@ -5,7 +5,6 @@ import numpy as np
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import statsmodels.formula.api as smf
@@ -62,6 +61,9 @@ def _render_wald_table_with_tooltips(wald_df_display, tooltips_dict=None):
             row_cols[i + 1].text(str(val) if not isinstance(val, str) else val)
     st.caption("Hover over ℹ️ for term definitions.")
 
+import statsmodels.api as sm
+import seaborn as sns
+import scipy.stats as stats
 
 # Set page config for a wide layout
 st.set_page_config(layout="wide")
@@ -188,8 +190,44 @@ with tab_eda:
 
 # --- HELPER FUNCTIONs - put results to be displayed here
 def render_question_tab1(label):
-    st.subheader(label)
-    st.write(f"**Results Summary for {label}** ...")
+    st.subheader("Question 1: Starting Salary Analysis")
+    
+    st.markdown("""
+    **Results Summary for Q1:**
+    - Without controlling for any variables, there is a statistically significant difference in starting salaries between male and female faculty members.
+    - Using multiple linear regression (MLR) and ANOVA to control for confounding variables such as degree, year of degree, field, and rank, we still find that gender plays a significant role in starting salaries.
+    - Thus, we conclude that there is a significant discrepancy in starting salaries by gender that cannot be fully explained by the available experiential and professional factors.
+    """)
+    
+    salary_path = Path(__file__).parent / "salary.txt"
+    if salary_path.exists():
+        df = pd.read_csv(salary_path, sep=r"\s+")
+        starting_df = df[df['year'] == df['startyr']].copy()
+        
+        col_plot, col_stats = st.columns([1, 1])
+        with col_plot:
+            st.markdown("### Starting Salaries by Gender")
+            fig_box, ax_box = plt.subplots(figsize=(8, 6))
+            sns.boxplot(x='sex', y='salary', data=starting_df, ax=ax_box)
+            ax_box.set_title("Starting Salaries by Gender (Uncontrolled)")
+            ax_box.set_xlabel("Gender")
+            ax_box.set_ylabel("Starting Salary")
+            st.pyplot(fig_box)
+            st.caption("Figure: Boxplot displaying the distribution of starting salaries globally between male and female faculty.")
+            
+        with col_stats:
+            men_start = starting_df[starting_df['sex'] == 'M']['salary']
+            women_start = starting_df[starting_df['sex'] == 'F']['salary']
+            mean_diff = np.mean(men_start) - np.mean(women_start)
+            t_stat, p_val_t = stats.ttest_ind(men_start, women_start, equal_var=False)
+            
+            st.markdown("### Preliminary Statistics")
+            st.write(f"**Mean Salary (Men):** ${np.mean(men_start):.2f}")
+            st.write(f"**Mean Salary (Women):** ${np.mean(women_start):.2f}")
+            st.write(f"**Mean Difference (Men - Women):** ${mean_diff:.2f}")
+            st.write(f"**Welch t-test:** t-statistic = {t_stat:.4f}, p-value = {p_val_t:.4e}")
+            
+    st.divider()
     
     # Nested Tabs: Uncontrolled vs Controlled
     sub_tab1, sub_tab2 = st.tabs(["Uncontrolled", "Controlled"])
@@ -217,19 +255,10 @@ def render_question_tab1(label):
                 if st.button("Click here to explore T-test", key="ttest_explore", use_container_width=True):
                     st.session_state.ttest_state = 1
                     st.rerun()
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            </div>
-            ''', unsafe_allow_html=True)
         elif st.session_state.ttest_state == 1:
             # Goal state
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
-                <h4 style="color: black; margin-top: 0;">Goal</h4>
-                <p style="color: black; font-size: 1.25em;">Shuffle the ‘sex’ label and observe how extreme our observed difference will be to random labeling. If the difference is extreme, we can reject the null hypothesis that the average salaries are the same between males and females.</p>
-                <div style="height: 50px;"></div>
-            </div>
-            ''', unsafe_allow_html=True)
+            st.markdown("#### Goal")
+            st.write("Shuffle the ‘sex’ label and observe how extreme our observed difference will be to random labeling. If the difference is extreme, we can reject the null hypothesis that the average salaries are the same between males and females.")
             col_spacer, col_btn = st.columns([8, 1])
             with col_btn:
                 if st.button("Next", key="ttest_goal_next"):
@@ -238,17 +267,11 @@ def render_question_tab1(label):
         elif 2 <= st.session_state.ttest_state <= 5:
             # Assumptions states (2-5)
             current_assumption_idx = st.session_state.ttest_state - 2
-            assumptions_html = '<h4 style="color: black; margin-top: 0;">Check Assumptions</h4>'
+            st.markdown("#### Check Assumptions")
             for i in range(current_assumption_idx + 1):
                 name, desc = assumptions[i]
-                assumptions_html += f'<p style="color: black;"><span style="font-weight: bold; font-size: 1.1em;">{name}:</span> {desc}</p>'
+                st.write(f"**{name}:** {desc}")
             
-            st.markdown(f'''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; position: relative;">
-                {assumptions_html}
-                <div style="height: 50px;"></div>
-            </div>
-            ''', unsafe_allow_html=True)
             col_spacer, col_btn = st.columns([8, 1])
             with col_btn:
                 if st.button("Next", key=f"ttest_next_{st.session_state.ttest_state}"):
@@ -256,26 +279,20 @@ def render_question_tab1(label):
                     st.rerun()
         else:
             # Results state
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; justify-content: space-around; align-items: center;">
-                <div>
-                    <h4 style="color: black; margin-top: 0;">Results</h4>
-                    <ul style="color: black; font-size: 1.1em;">
-                        <li>Test Statistic = -12.00</li>
-                        <li>p-value = 0.00</li>
-                        <li>95% CI: [218.0, 612.4]</li>
-                    </ul>
-                </div>
-                <div style="display: flex; align-items: center; max-width: 350px; text-align: center;">
-                    <p style="color: black; font-weight: bold; font-size: 1.3em;">Difference in average salaries are significant without controlling other variables.</p>
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
+            st.markdown("#### Results")
+            res_c1, res_c2 = st.columns(2)
+            with res_c1:
+                st.write("- **Test Statistic:** -12.00")
+                st.write("- **p-value:** 0.00")
+                st.write("- **95% CI:** [218.0, 612.4]")
+            with res_c2:
+                st.info("Difference in average salaries are significant without controlling other variables.")
+            
             col_spacer, col_btn = st.columns([6, 2])
             with col_btn:
                 st.markdown('''
                 <a href="#permutation-test-section" onclick="document.getElementById('permutation-test-section').scrollIntoView({behavior: 'smooth'}); return false;" style="text-decoration: none;">
-                    <button style="padding: 0.5rem 1rem; cursor: pointer; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; color: black;">Explore Permutation Test</button>
+                    <button style="padding: 0.5rem 1rem; cursor: pointer; background-color: transparent; border: 1px solid #ccc; border-radius: 4px; color: inherit;">Explore Permutation Test</button>
                 </a>
                 ''', unsafe_allow_html=True)
 
@@ -294,23 +311,14 @@ def render_question_tab1(label):
                 if st.button("Click here to explore Permutation Test", key="perm_explore", use_container_width=True):
                     st.session_state.perm_state = 1
                     st.rerun()
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            </div>
-            ''', unsafe_allow_html=True)
         elif st.session_state.perm_state == 1:
             # Goal state
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
-                <h4 style="color: black; margin-top: 0;">Goal</h4>
-                <p style="color: black; font-size: 1.25em;">Compare average starting salaries between males and females using a non-parametric approach.</p>
-                <h4 style="color: black;">Hypotheses</h4>
-                <p style="color: black;">H₀: μ<sub>males</sub> - μ<sub>females</sub> = 0</p>
-                <p style="color: black;">Hₐ: μ<sub>males</sub> - μ<sub>females</sub> ≠ 0</p>
-                <p style="color: black; font-style: italic;">(If null is true, we should expect our p-value to be large.)</p>
-                <div style="height: 20px;"></div>
-            </div>
-            ''', unsafe_allow_html=True)
+            st.markdown("#### Goal")
+            st.write("Compare average starting salaries between males and females using a non-parametric approach.")
+            st.markdown("##### Hypotheses")
+            st.write("- **H₀:** μ(males) - μ(females) = 0")
+            st.write("- **Hₐ:** μ(males) - μ(females) ≠ 0")
+            st.write("*(If null is true, we should expect our p-value to be large.)*")
             col_spacer, col_btn = st.columns([8, 1])
             with col_btn:
                 if st.button("Next", key="perm_goal_next"):
@@ -320,15 +328,9 @@ def render_question_tab1(label):
             # Results state
             perm_col_left, perm_col_right = st.columns(2)
             with perm_col_left:
-                st.markdown('''
-                <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px;">
-                    <h4 style="color: black; margin-top: 0;">Results</h4>
-                    <ul style="color: black; font-size: 1.1em;">
-                        <li>p-value = 0.002</li>
-                    </ul>
-                    <p style="color: black; font-weight: bold; font-size: 1.1em;">At the 5% significance level, we can reject the null hypothesis that the average salaries are the same between males and females.</p>
-                </div>
-                ''', unsafe_allow_html=True)
+                st.markdown("#### Results")
+                st.write("- **p-value:** 0.002")
+                st.success("At the 5% significance level, we can reject the null hypothesis that the average salaries are the same between males and females.")
             with perm_col_right:
                 st.image("perm_test.png")
 
@@ -358,16 +360,99 @@ def render_question_tab1(label):
         anova_col, wald_col = st.columns(2)
         with anova_col:
             st.markdown("## ANOVA")
-            st.caption("Description")
-            st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
-            )
-            st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            
+            # Use a session state similar to T-test for Goal/Description
+            if 'q1_anova_state' not in st.session_state:
+                st.session_state.q1_anova_state = 0 # 0: Goal, 1: Running/Results
+
+            if st.session_state.q1_anova_state == 0:
+                st.markdown("#### Goal")
+                st.markdown(
+                    "Is gender a significant predictor of starting salaries after controlling for other experiential and professional factors? "
+                    "We compare a model predicting starting salaries **with** the sex variable against a model **without** it."
+                )
+                st.markdown(
+                    "**Predictors:** degree, year of degree, field, rank, admin duties, and year. "
+                    "The comparison is restricted to observations where `year == startyr`."
+                )
+                
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    if st.button("Run ANOVA", key="q1_anova_run_trigger", use_container_width=True):
+                        st.session_state.q1_anova_state = 1
+                        st.rerun()
+            else:
+                if not salary_path.exists():
+                    st.warning("Data file `salary.txt` not found. Add it to the project directory to run the ANOVA test.")
+                else:
+                    try:
+                        df = pd.read_csv(salary_path, sep=r"\s+")
+                        starting_df = df[df['year'] == df['startyr']].copy()
+                        starting_df = starting_df.dropna(subset=['salary', 'deg', 'yrdeg', 'field', 'rank', 'admin', 'year'])
+                        
+                        model_no_sex = smf.ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year', data=starting_df).fit()
+                        model_with_sex = smf.ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year + C(sex)', data=starting_df).fit()
+                        
+                        anova_results = sm.stats.anova_lm(model_no_sex, model_with_sex)
+                        f_stat = anova_results['F'].iloc[1]
+                        p_val_anova = anova_results['Pr(>F)'].iloc[1]
+                        
+                        st.markdown("#### ANOVA Results")
+                        res_col1, res_col2 = st.columns(2)
+                        with res_col1:
+                            st.metric("F-statistic", f"{f_stat:.4f}")
+                        with res_col2:
+                            st.metric("p-value", f"{p_val_anova:.4e}", delta="Significant" if p_val_anova < 0.05 else "Not Significant", delta_color="normal" if p_val_anova < 0.05 else "inverse")
+                        
+                        st.markdown(
+                            f"**Conclusion:** {'As the p-value is extremely small (< 0.05), we can reject the null hypothesis and conclude that gender plays a significant role in determining starting salaries even after controlling for other factors.' if p_val_anova < 0.05 else 'At the 5% significance level, we fail to reject the null hypothesis, suggesting that gender does not have a significant effect on starting salaries when controlling for other variables.'}"
+                        )
+                        
+                        # Visualization like Q3
+                        st.divider()
+                        st.markdown("#### Impact of Gender on Other Coefficients")
+                        params_no_sex = model_no_sex.params
+                        params_with_sex = model_with_sex.params
+                        common = [i for i in params_no_sex.index if i in params_with_sex.index]
+                        
+                        plot_vars = []
+                        for v in common:
+                            c_no = float(params_no_sex[v])
+                            c_with = float(params_with_sex[v])
+                            if c_no != 0:
+                                pct = abs((c_with - c_no) / c_no * 100)
+                                if pct > 3: # Lower threshold for Q1 to show something interesting
+                                    plot_vars.append(v)
+                        
+                        if plot_vars:
+                            n_var = len(plot_vars)
+                            fig_q1_anova = make_subplots(
+                                rows=n_var,
+                                cols=1,
+                                subplot_titles=[v.replace("C(", "").replace(")", "").replace("[T.", ": ") for v in plot_vars],
+                                vertical_spacing=0.1,
+                            )
+                            for i, var in enumerate(plot_vars):
+                                fig_q1_anova.add_trace(
+                                    go.Bar(x=["Without sex"], y=[params_no_sex[var]], marker_color="#000080", name="Without sex", showlegend=(i == 0)),
+                                    row=i + 1, col=1
+                                )
+                                fig_q1_anova.add_trace(
+                                    go.Bar(x=["With sex"], y=[params_with_sex[var]], marker_color="#b22222", name="With sex", showlegend=(i == 0)),
+                                    row=i + 1, col=1
+                                )
+                            fig_q1_anova.update_layout(height=max(300, 150 * n_var), showlegend=True, barmode="group", margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_q1_anova, use_container_width=True, key="q1_anova_coef_bar")
+                        
+                        with st.expander("Show ANOVA Table"):
+                            st.dataframe(anova_results.fillna(0.0).astype(str), use_container_width=True)
+
+                    except Exception as e:
+                        st.error(f"Error computing ANOVA: {e}")
+                
+                if st.button("Hide ANOVA Results", key="q1_anova_hide_trigger"):
+                    st.session_state.q1_anova_state = 0
+                    st.rerun()
         with wald_col:
             st.markdown("## Wald Test")
             st.caption("Description")
@@ -377,24 +462,23 @@ def render_question_tab1(label):
                 "Wald test of all terms uses **HC3** robust standard errors."
             )
             st.caption("Results")
-            if not salary_path.exists():
-                st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
-                st.code(
-                    "df = pd.read_csv('salary.txt', sep=r'\\s+')\n"
-                    "df_same_salary = df[df['startyr'] == df['year']]\n"
-                    "mls_model_same_year = smf.ols(formula='salary ~ sex + deg + yrdeg + field + startyr + '\n"
-                    "    'year + rank + admin', data=df_same_salary).fit(cov_type='HC3')\n"
-                    "robust_wald_same_year = mls_model_same_year.wald_test_terms()",
-                    language="python",
-                )
-            elif robust_wald_same_year is None:
-                st.error("Error fitting model. Check data and formula.")
-            else:
-                try:
-                    wald_df = getattr(robust_wald_same_year, "result_frame", None) or getattr(
-                        robust_wald_same_year, "table", None
-                    )
-                    if wald_df is not None and hasattr(wald_df, "to_html"):
+            if "q1_wald_run" not in st.session_state:
+                st.session_state.q1_wald_run = False
+                
+            q1_wald_left, q1_wald_right = st.columns([1, 1])
+            with q1_wald_left:
+                if st.button("Run Wald Test", key="q1_wald_run_btn"):
+                    st.session_state.q1_wald_run = True
+            with q1_wald_right:
+                if st.button("Hide Wald Results", key="q1_wald_hide_btn"):
+                    st.session_state.q1_wald_run = False
+                    
+            if st.session_state.q1_wald_run:
+                if not salary_path.exists():
+                    st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
+                elif robust_wald_same_year is not None:
+                    wald_df = getattr(robust_wald_same_year, "result_frame", None) or getattr(robust_wald_same_year, "table", None)
+                    if wald_df is not None:
                         wald_df_display = wald_df.copy()
                         for c in wald_df_display.columns:
                             if "statistic" in str(c).lower() or str(c).lower() in ("f", "chi2", "wald"):
@@ -413,10 +497,12 @@ def render_question_tab1(label):
                                 break
                         if pval_col_display is not None:
                             wald_df_display[pval_col_display] = wald_df_display[pval_col_display].apply(_format_pval_5digits)
+                        
                         wald_df_display = wald_df_display.astype(str).replace(r"\[\[|\]\]", "", regex=True)
                         wald_tab_left, wald_tab_right = st.columns([1, 1])
                         with wald_tab_left:
                             st.dataframe(wald_df_display, use_container_width=True)
+                            
                             st.markdown("**Download results**")
                             csv_bytes = wald_df_display.to_csv(index=True).encode("utf-8")
                             st.download_button(
@@ -426,7 +512,9 @@ def render_question_tab1(label):
                                 mime="text/csv",
                                 key="wald_download",
                             )
-                        with wald_tab_right:
+                            
+                            st.divider()
+    
                             # Infer statistic and pvalue columns (statsmodels naming varies)
                             stat_col = None
                             pval_col = None
@@ -441,7 +529,7 @@ def render_question_tab1(label):
                             if pval_col is None and len(wald_df.columns) >= 2:
                                 num_cols = wald_df.select_dtypes(include=[np.number]).columns.tolist()
                                 pval_col = num_cols[1] if len(num_cols) > 1 else num_cols[0]
-
+    
                             def _bar_colors(labels, navy="#000080", red="#b22222"):
                                 return [red if "sex" in str(lb).lower() else navy for lb in labels]
 
@@ -467,6 +555,7 @@ def render_question_tab1(label):
                                     )
                                     fig_stat.update_yaxes(autorange="reversed")
                                     st.plotly_chart(fig_stat, use_container_width=True, key="wald_stat_bar")
+                        with wald_tab_right:
                             if pval_col is not None:
                                 p = wald_df[pval_col].copy()
                                 if hasattr(p, "values") and p.dtype == object:
@@ -490,8 +579,8 @@ def render_question_tab1(label):
                                     st.plotly_chart(fig_pval, use_container_width=True, key="wald_pval_bar")
                     else:
                         st.text(str(robust_wald_same_year))
-                except Exception:
-                    st.text(str(robust_wald_same_year))
+            else:
+                st.info("Click 'Run Wald Test' to process and view robustness checks.")
 
         st.subheader("MLR Test")
         mlr_base_tab, mlr_interaction_tab = st.tabs(["Base", "Interaction"])
@@ -499,8 +588,9 @@ def render_question_tab1(label):
         with mlr_base_tab:
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "This **base MLR model** predicts starting salaries using predictors such as degree, year of degree, field, rank, and administrative duties. "
+                "The `sex` variable is included to see if gender significantly impacts the starting salary baseline after controlling for these other main effects. "
+                "Because this is evaluated only on starting years, it analyzes the baseline pay entry wage gap."
             )
             st.caption("Results")
             if "mlr_base_run" not in st.session_state:
@@ -532,8 +622,9 @@ def render_question_tab1(label):
         with mlr_interaction_tab:
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "This **interaction MLR model** takes the base model further by multiplying the `sex` variable with every other covariate. "
+                "This allows us to see not just if there is a flat wage penalty for females, but if the *effect* of other factors (like getting a PhD or being in a certain field) "
+                "differs by gender. For example, do men get a higher starting salary bump for a PhD than women do?"
             )
             st.caption("Results")
             if "mlr_interaction_run" not in st.session_state:
@@ -1132,6 +1223,10 @@ def render_question_tab3(label):
                     st.info("Click the button above to run the analysis.")
     with sub_tab3:
         st.subheader("ANOVA and Wald Test")
+        st.markdown(
+            "ANOVA is used to compare the fit of the baseline MLR model strictly against a model omitting gender. "
+            "A Wald test robustly checks if the coefficients for gender significantly differ from zero under heteroskedasticity."
+        )
         anova_col, wald_col = st.columns(2)
         with anova_col:
             st.subheader("ANOVA")
