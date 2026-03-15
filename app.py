@@ -1,6 +1,9 @@
 import streamlit as st
 from pathlib import Path
 
+import pandas as pd
+import statsmodels.formula.api as smf
+
 # Set page config for a wide layout
 st.set_page_config(layout="wide")
 
@@ -51,6 +54,22 @@ def render_question_tab1(label):
         )
 
     with sub_tab2:
+        # Load same-year model once for Wald column and MLR Base tab
+        salary_path = Path(__file__).parent / "salary.txt"
+        mls_model_same_year = None
+        robust_wald_same_year = None
+        if salary_path.exists():
+            try:
+                df = pd.read_csv(salary_path, sep=r"\s+")
+                df_same_salary = df[df["startyr"] == df["year"]]
+                mls_model_same_year = smf.ols(
+                    formula="salary ~ sex + deg + yrdeg + field + startyr + year + rank + admin",
+                    data=df_same_salary,
+                ).fit(cov_type="HC3")
+                robust_wald_same_year = mls_model_same_year.wald_test_terms()
+            except Exception:
+                pass
+
         st.subheader("ANOVA and Wald Test")
         anova_col, wald_col = st.columns(2)
         with anova_col:
@@ -69,14 +88,44 @@ def render_question_tab1(label):
             st.markdown("## Wald Test")
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "Same-year salary model: OLS of **salary** on sex, deg, yrdeg, field, startyr, year, rank, admin "
+                "restricted to rows where `startyr == year` (first year at institution). "
+                "Wald test of all terms uses **HC3** robust standard errors."
             )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            if not salary_path.exists():
+                st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
+                st.code(
+                    "df = pd.read_csv('salary.txt', sep=r'\\s+')\n"
+                    "df_same_salary = df[df['startyr'] == df['year']]\n"
+                    "mls_model_same_year = smf.ols(formula='salary ~ sex + deg + yrdeg + field + startyr + '\n"
+                    "    'year + rank + admin', data=df_same_salary).fit(cov_type='HC3')\n"
+                    "robust_wald_same_year = mls_model_same_year.wald_test_terms()",
+                    language="python",
+                )
+            elif robust_wald_same_year is None:
+                st.error("Error fitting model. Check data and formula.")
+            else:
+                try:
+                    wald_df = getattr(robust_wald_same_year, "result_frame", None) or getattr(
+                        robust_wald_same_year, "table", None
+                    )
+                    if wald_df is not None and hasattr(wald_df, "to_html"):
+                        wald_df_display = wald_df.astype(str)
+                        st.dataframe(wald_df_display, use_container_width=True)
+                        st.markdown("**Download results**")
+                        csv_bytes = wald_df_display.to_csv(index=True).encode("utf-8")
+                        st.download_button(
+                            "Download Wald test table (CSV)",
+                            data=csv_bytes,
+                            file_name="wald_test_results.csv",
+                            mime="text/csv",
+                            key="wald_download",
+                        )
+                    else:
+                        st.text(str(robust_wald_same_year))
+                except Exception:
+                    st.text(str(robust_wald_same_year))
 
         st.subheader("MLR Test")
         mlr_base_tab, mlr_interaction_tab = st.tabs(["Base", "Interaction"])
@@ -88,10 +137,13 @@ def render_question_tab1(label):
                 unsafe_allow_html=True,
             )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            if mls_model_same_year is not None:
+                st.text(str(mls_model_same_year.summary()))
+            else:
+                st.markdown(
+                    '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
+                    unsafe_allow_html=True,
+                )
 
         with mlr_interaction_tab:
             st.caption("Description")
@@ -231,7 +283,7 @@ def render_question_tab2(label):
                 shown = 0
                 for f in plot_files:
                     if (plots_dir / f).exists():
-                        st.image(str(plots_dir / f), use_container_width=True)
+                        st.image(str(plots_dir / f), use_column_width=True)
                         shown += 1
                 if shown == 0:
                     st.info("Add diagnostic plots to `q2_plots/` (linearity.png, homoskedasticity.png, normality.png, outliers.png).")
@@ -286,7 +338,7 @@ def render_question_tab2(label):
                 full_shown = 0
                 for f in full_plot_files:
                     if (full_plots_dir / f).exists():
-                        st.image(str(full_plots_dir / f), use_container_width=True)
+                        st.image(str(full_plots_dir / f), use_column_width=True)
                         full_shown += 1
                 if full_shown == 0:
                     st.info("Add Full Salary diagnostic plots to q2_plots/ (linearity_full.png, normality_full.png).")
