@@ -117,48 +117,66 @@ def render_question_tab2(label):
             unsafe_allow_html=True,
         )
 
-        with st.expander("**Step 1: Prepare**", expanded=True):
-            st.markdown("""
-            In order to answer our question, we need to prepare the data first. 
-            We filtered our dataframe to all staff who were promoted to full time from associate level. 
-            \n You can see an example of the filtered dataframe below.""")
-            img_col, _ = st.columns([1, 1])
-            with img_col:
+        st.markdown("**Step 1a: Prepare**")
+        st.markdown("""
+        In order to answer our question, we need to prepare the data first. 
+        We filtered our dataframe to all staff who were promoted to full time from associate level. 
+        We then calculated the salary difference between the first year they were a full professor, 
+        and the last year associate professor. You can see an example of the data below, 
+        where we first filtered the data to only include promoted professors, and then calculated the salary difference for each professor.
+        In total we had 545 professors that were promoted to full time from associate level.
+        """)
+        if "q2_step1_image" not in st.session_state:
+            st.session_state["q2_step1_image"] = "promoted"
+        btn1, btn2 = st.columns(2)
+        with btn1:
+            if st.button("Promoted Professors Data", key="q2_btn_promoted", use_container_width=True):
+                st.session_state["q2_step1_image"] = "promoted"
+                st.rerun()
+        with btn2:
+            if st.button("Salary Difference Data", key="q2_btn_salary_diff", use_container_width=True):
+                st.session_state["q2_step1_image"] = "salary_diff"
+                st.rerun()
+        diff_col, _ = st.columns([3, 1])
+        with diff_col:
+            if st.session_state["q2_step1_image"] == "promoted":
                 st.image("assets/step1_prepared_data.png", use_container_width=True)
-            st.markdown("""
-            We then calculated the salary difference between the first year they were a full professor, 
-            and the last year associate professor. \n You can see an example of the calculated dataframe below.
-            """)
-            diff_col, _ = st.columns([1, 4])
-            with diff_col:
+            else:
                 st.image("assets/step1_salary_diff.png", use_container_width=True)
-            st.markdown("""
-            In total we have 545 professors that were promoted to full time from associate level.
-            """)
-        with st.expander("**Step 2: Hypotheses & Test**"):
-            st.markdown("""
-            Now we can test the hypothesis. We will use a two sample T-Test to test the hypothesis.
-            The null hypothesis is that there is no difference in the average salary jump between males and females.
-            The alternative hypothesis is that there is a difference in the average salary jump between males and females.
-            
-            **Two sample T-Test**
-            - H₀: μ(males) = μ(females)
-            - Hₐ: μ(males) ≠ μ(females)
-            - alpha = 0.05
-            t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE) 
-            \n We are using the var.equal = TRUE argument because we are assuming that the variance is equal between the two groups.
-            And since our sample size is large, we can use the t-distribution to approximate the normal distribution.
-            """)
+        st.markdown("**Step 1b: Salary Difference EDA**")
+        st.markdown("To get a glance at our data, we plotted the density and boxplot of the salary difference to see the distribution of the salary difference between males and females.")
+        plot_col1, plot_col2 = st.columns(2)
+        with plot_col1:
+            st.image("assets/salary_diff_density.png", use_container_width=True)
+        with plot_col2:
+            st.image("assets/salary_diff_boxplot.png", use_container_width=True)
+        st.markdown("""At a glance, we can see that the density curves of salary jump between the two genders are relatively similar, 
+        and the boxplots show a similar median salary jump, with females having a slightly higher median. However males seem to have a larger range and outliers in the data.""")
+        st.markdown("**Step 2: Hypotheses & Test**")
+        st.markdown("""
+        Now we can test the hypothesis. We will use a two sample T-Test to test the hypothesis.
+        The null hypothesis is that there is no difference in the average salary jump between males and females.
+        The alternative hypothesis is that there is a difference in the average salary jump between males and females.
 
-        with st.expander("**Step 3: Results**"):
-            st.markdown("""
-            After running the T-Test, we get the following results:
-            | Statistic | Value |
-            |-----------|-------|
-            | T Statistic | 1.3291 |
-            | P-Value | 0.1858 |
-            | 95% CI | [-26.21, 133.88] |
-            """)
+        **Two sample T-Test**
+        - H₀: μ(males) = μ(females)
+        - Hₐ: μ(males) ≠ μ(females)
+        - alpha = 0.05
+        t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE)
+
+        \n We are using the var.equal = TRUE argument because we are assuming that the variance is equal between the two groups.
+        And since our sample size is large, we can use the t-distribution to approximate the normal distribution.
+        """)
+
+        st.markdown("**Step 3: Results**")
+        st.markdown("""
+        After running the T-Test, we get the following results:
+        | Statistic | Value |
+        |-----------|-------|
+        | T Statistic | 1.3291 |
+        | P-Value | 0.1858 |
+        | 95% CI | [-26.21, 133.88] |
+        """)
         st.markdown("## Results")
         st.markdown("""
         **Conclusion:** We fail to reject the null hypothesis
