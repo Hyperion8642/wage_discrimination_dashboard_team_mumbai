@@ -1,6 +1,7 @@
 # wage_discrimination_dashboard_team_mumbai
 
-To Professor Willis,
+To Professor Willis, \n
+
 This report presents our analysis of faculty salary data from a U.S. university with the goal of investigating potential gender-based wage discrimination. Although differences in salaries between male and female faculty have been documented in many labor markets, determining whether these differences arise from discrimination or from other factors remains a complex statistical question. This project aims to answer four questions which will help us evaluate whether observed salary differences exist after accounting for variables that commonly influence academic compensation: 
 Does wage discrimination exist in the starting salaries of faculty members?
 Does wage discrimination exist in granting promotions from Associate Professor to Full Professor?
