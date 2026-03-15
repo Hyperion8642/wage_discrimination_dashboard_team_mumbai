@@ -311,24 +311,66 @@ def render_question_tab2(label):
 
 def render_question_tab3(label):
     st.subheader(label)
-    st.write(f"**Results Summary for {label}** ...")
+    st.write(f"**Results Summary for {label}**:")
+    st.markdown(
+        """
+        - Our models reveal a statistically significant gender-based wage disparity in baseline starting salaries.
+        - When isolating the promotion process, we found no evidence of discrimination in the specific salary increases granted when transitioning to Full Professor.
+        - However, because the initial wage gap is never corrected, significant salary disparities remain present during a professor's first year at the Full Professor rank.
+        """
+    )
     
     # Nested Tabs: Uncontrolled vs Controlled
     sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Propensity Score Matching", "MLR Approach", "ANOVA and Wald Test"])
     
     with sub_tab1:
         st.subheader("Propensity Score Matching")
-        st.caption("Description")
-        st.markdown(
-         '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Results")
-        st.markdown(
-            '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-            unsafe_allow_html=True,
-        )
-        # Add regression results or stats here
+        psm_text_col, psm_graph_col = st.columns([1.15, 1])
+        with psm_text_col:
+            st.markdown("#### Methodological Rationale")
+            st.markdown(
+                "To definitively test for structural wage discrimination and address potential confounding variables, we implemented Propensity Score Matching (PSM). "
+                "Standard regression models control for covariates mathematically, but PSM allows us to construct a highly balanced, \"apples-to-apples\" comparison. "
+                "By matching female faculty members with male peers who have nearly identical professional profiles, we aimed to isolate the specific effect of gender on salary."
+            )
+            st.markdown("#### Determining the Propensity Score")
+            st.markdown(
+                "The propensity score for each observation was calculated using a Logistic Regression model. Rather than predicting salary, this model predicted the probability of a "
+                "faculty member being female based on their structural and background characteristics. The predictor variables included years since degree (yrdeg), starting year (startyr), "
+                "administrative duties (admin), degree type (deg), academic field (field), and current rank (rank). This single probability score compressed a multi-dimensional professional "
+                "profile into one comparable metric."
+            )
+            st.markdown("#### The Matching Process and Post-Match Analysis")
+            st.markdown(
+                "Once scores were assigned, female faculty were paired with male faculty who possessed the same (or nearly identical) propensity scores. This matching algorithm essentially "
+                "created \"twins\" within the dataset, ensuring that we were comparing individuals with the exact same qualifications and career trajectories. Following the matching process, "
+                "we applied a post-matching Ordinary Least Squares (OLS) Multiple Linear Regression on this balanced subset for each year to extract the exact wage penalty associated with gender."
+            )
+            st.markdown("#### Key Findings")
+            st.markdown(
+                "The PSM analysis revealed a clear and persistent wage penalty for female faculty. When calculating the wage deficit as a percentage of the matched male peer's salary, "
+                "the data showed that identically qualified women consistently earned roughly 5% to 15% less than their direct male counterparts. Notably, across the entire two-decade span "
+                "analyzed, this estimated wage gap never dropped to 0%. This demonstrates that the observed salary differences are not merely an artifact of differing qualifications or career "
+                "choices (such as field or rank), but rather represent a persistent, structural wage gap."
+            )
+        with psm_graph_col:
+            st.markdown("#### Results")
+            st.image("q3_plots/psm_graph.png", use_container_width=True)
+            st.markdown("#### Yearly Wage Penalty Results For Females(%)")
+            psm_yearly_results = [
+                {"year": 76, "gap_pct": 2.556195},
+                {"year": 78, "gap_pct": 2.369941},
+                {"year": 80, "gap_pct": 4.412997},
+                {"year": 82, "gap_pct": 4.820340},
+                {"year": 84, "gap_pct": 4.121635},
+                {"year": 86, "gap_pct": 8.743591},
+                {"year": 88, "gap_pct": 7.668708},
+                {"year": 90, "gap_pct": 6.421193},
+                {"year": 92, "gap_pct": 7.556835},
+                {"year": 94, "gap_pct": 6.439020},
+                {"year": 95, "gap_pct": 5.350346}
+            ]
+            st.dataframe(psm_yearly_results, hide_index=True, use_container_width=True)
         
     with sub_tab2:
         st.subheader("MLR Approach")
