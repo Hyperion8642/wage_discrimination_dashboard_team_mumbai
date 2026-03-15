@@ -7,7 +7,61 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import statsmodels.formula.api as smf
+from statsmodels.stats.anova import anova_lm
+
+
+def _format_pval_5digits(v):
+    """Format a p-value to 5 significant figures (handles decimal and exponential form)."""
+    try:
+        a = np.asarray(v).flatten()
+        if len(a) == 0:
+            return v
+        x = float(a[0])
+        return f"{x:.5g}"
+    except (TypeError, ValueError, IndexError):
+        return v
+
+
+# Factor tooltips for Wald test tables (row labels)
+WALD_FACTOR_TOOLTIPS = {
+    "Intercept": "Baseline (reference) term.",
+    "sex": "Sex: Male vs. Female. Tests whether the effect of sex on the outcome is significant.",
+    "deg": "Degree type (e.g. PhD, Professional).",
+    "yrdeg": "Years since degree. Experience measure.",
+    "field": "Academic field (e.g. Arts, Other, Professional).",
+    "startyr": "Year the professor started at the institution.",
+    "year": "Year of observation.",
+    "rank": "Academic rank.",
+    "admin": "Administrative appointment (yes/no).",
+    "id": "Institution or identifier.",
+}
+
+
+def _render_wald_table_with_tooltips(wald_df_display, tooltips_dict=None):
+    """Render Wald result dataframe as a styled table with tooltips on the factor (index) column."""
+    tips = tooltips_dict if tooltips_dict is not None else WALD_FACTOR_TOOLTIPS
+    cols = list(wald_df_display.columns)
+    n_cols = len(cols) + 1  # +1 for index
+    # Header: index name (e.g. "term") + column names
+    widths = [1.5] + [1.0] * len(cols)
+    header_cols = st.columns(widths)
+    header_cols[0].markdown("**Term**")
+    for i, c in enumerate(cols):
+        header_cols[i + 1].markdown(f"**{c}**")
+    st.divider()
+    for idx in wald_df_display.index:
+        key = str(idx).split("[")[0] if "[" in str(idx) else idx
+        tip = (tips.get(idx, "") or tips.get(key, "")).replace('"', "&quot;")
+        var_html = f'<span title="{tip}" style="cursor: help; border-bottom: 1px dotted #666;">{idx} ℹ️</span>' if tip else str(idx)
+        row_cols = st.columns(widths)
+        row_cols[0].markdown(var_html, unsafe_allow_html=True)
+        for i, c in enumerate(cols):
+            val = wald_df_display.loc[idx, c]
+            row_cols[i + 1].text(str(val) if not isinstance(val, str) else val)
+    st.caption("Hover over ℹ️ for term definitions.")
+
 
 # Set page config for a wide layout
 st.set_page_config(layout="wide")
@@ -158,15 +212,15 @@ def render_question_tab1(label):
         # T-test interactive block
         if st.session_state.ttest_state == 0:
             # Initial state - Click to explore
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            </div>
-            ''', unsafe_allow_html=True)
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button("Click here to explore T-test", key="ttest_explore", use_container_width=True):
                     st.session_state.ttest_state = 1
                     st.rerun()
+            st.markdown('''
+            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            </div>
+            ''', unsafe_allow_html=True)
         elif st.session_state.ttest_state == 1:
             # Goal state
             st.markdown('''
@@ -235,15 +289,15 @@ def render_question_tab1(label):
         # Permutation Test interactive block
         if st.session_state.perm_state == 0:
             # Initial state - Click to explore
-            st.markdown('''
-            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            </div>
-            ''', unsafe_allow_html=True)
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button("Click here to explore Permutation Test", key="perm_explore", use_container_width=True):
                     st.session_state.perm_state = 1
                     st.rerun()
+            st.markdown('''
+            <div style="background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 1rem; min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            </div>
+            ''', unsafe_allow_html=True)
         elif st.session_state.perm_state == 1:
             # Goal state
             st.markdown('''
@@ -341,7 +395,25 @@ def render_question_tab1(label):
                         robust_wald_same_year, "table", None
                     )
                     if wald_df is not None and hasattr(wald_df, "to_html"):
-                        wald_df_display = wald_df.astype(str)
+                        wald_df_display = wald_df.copy()
+                        for c in wald_df_display.columns:
+                            if "statistic" in str(c).lower() or str(c).lower() in ("f", "chi2", "wald"):
+                                def _round_stat(v):
+                                    try:
+                                        a = np.asarray(v).flatten()
+                                        return round(float(a[0]), 5) if len(a) else v
+                                    except (TypeError, ValueError, IndexError):
+                                        return v
+                                wald_df_display[c] = wald_df_display[c].apply(_round_stat)
+                        pval_col_display = None
+                        for c in wald_df_display.columns:
+                            cl = str(c).lower()
+                            if "pvalue" in cl or "p>" in cl or "pr>" in cl:
+                                pval_col_display = c
+                                break
+                        if pval_col_display is not None:
+                            wald_df_display[pval_col_display] = wald_df_display[pval_col_display].apply(_format_pval_5digits)
+                        wald_df_display = wald_df_display.astype(str).replace(r"\[\[|\]\]", "", regex=True)
                         wald_tab_left, wald_tab_right = st.columns([1, 1])
                         with wald_tab_left:
                             st.dataframe(wald_df_display, use_container_width=True)
@@ -379,8 +451,9 @@ def render_question_tab1(label):
                                     s = pd.to_numeric(s.astype(str).str.replace(r"[^\d.e\-]", "", regex=True), errors="coerce")
                                 s = s.dropna().sort_values(ascending=False)
                                 if len(s) > 0:
+                                    x_vals = np.round(s.values.astype(float), 5)
                                     fig_stat = go.Figure(go.Bar(
-                                        x=s.values, y=s.index.astype(str),
+                                        x=x_vals, y=s.index.astype(str),
                                         orientation="h",
                                         marker_color=_bar_colors(s.index),
                                     ))
@@ -453,7 +526,8 @@ def render_question_tab1(label):
                     st.caption("Add `salary.txt` to run the model.")
             with mlr_right:
                 if st.session_state.mlr_base_run and mls_model_same_year is not None:
-                    st.text(str(mls_model_same_year.summary()))
+                    st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
+                    _render_ols_coef_table(mls_model_same_year, Q1_MLR_TOOLTIPS, highlight_var="sex")
 
         with mlr_interaction_tab:
             st.caption("Description")
@@ -489,7 +563,30 @@ def render_question_tab1(label):
                     st.caption("Add `salary.txt` to run the model.")
             with mlr_int_right:
                 if st.session_state.mlr_interaction_run and mls_model_same_year_interact is not None:
-                    st.text(str(mls_model_same_year_interact.summary()))
+                    st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
+                    _render_ols_coef_table(mls_model_same_year_interact, Q1_MLR_TOOLTIPS, highlight_var="sex")
+
+# Variable tooltips for Q1 MLR (same-year salary, base and interaction)
+Q1_MLR_TOOLTIPS = {
+    "Intercept": "Baseline expected salary when all predictors are at reference level.",
+    "sex": "Sex: Male vs. Female (reference). Effect of sex on same-year salary.",
+    "deg": "Degree type (PhD, Professional, etc.).",
+    "yrdeg": "Years since degree.",
+    "field": "Academic field (Arts, Other, Professional).",
+    "startyr": "Year the professor started at the institution.",
+    "year": "Year of observation.",
+    "rank": "Academic rank.",
+    "admin": "Administrative appointment (yes/no).",
+    "sex:deg": "Interaction: sex × degree. Difference in the effect of degree by sex.",
+    "sex:yrdeg": "Interaction: sex × years since degree.",
+    "sex:field": "Interaction: sex × field.",
+    "sex:year": "Interaction: sex × year.",
+    "sex:startyr": "Interaction: sex × start year.",
+    "sex:rank": "Interaction: sex × rank.",
+    "sex:admin": "Interaction: sex × administrative appointment.",
+    "id": "Institution or identifier.",
+    "sex:id": "Interaction: sex × institution/identifier.",
+}
 
 # Variable tooltips for Q2 MLR (salary jump analysis)
 Q2_VAR_TOOLTIPS = {
@@ -545,6 +642,63 @@ def _q2_coef_row_robust(var_name: str, est: str, se: str, t: str, p: str, ci: st
     cols[3].text(t)
     cols[4].text(p)
     cols[5].text(ci)
+
+
+def _tip_for_param(param_name: str, tips: dict) -> str:
+    """Get tooltip for a param name; try exact key, then interaction key (e.g. sex:deg), then prefix before '['."""
+    s = str(param_name)
+    if param_name in tips:
+        return tips[param_name]
+    if ":" in s:
+        key_inter = ":".join(p.split("[")[0] for p in s.split(":"))
+        if key_inter in tips:
+            return tips[key_inter]
+    key = s.split("[")[0].split(":")[0]
+    return tips.get(key, "")
+
+
+def _format_p_display(p: float) -> str:
+    """Format p-value for display with significance stars."""
+    if p < 0.001:
+        return "<0.001***"
+    if p < 0.01:
+        return f"{p:.3f}**"
+    if p < 0.05:
+        return f"{p:.3f}*"
+    if p < 0.1:
+        return f"{p:.3f}."
+    return f"{p:.3f}"
+
+
+def _render_ols_coef_table(model, tooltips: dict, highlight_var: str = "sex"):
+    """Render OLS coefficient table in m2_tab style (Variable, Estimate, Robust SE, t, p, 95% CI) with tooltips."""
+    params = model.params
+    bse = model.bse
+    tvalues = model.tvalues
+    pvalues = model.pvalues
+    conf_int = model.conf_int(alpha=0.05)
+    header_cols = st.columns([1.8, 1, 1, 0.8, 0.8, 1.5])
+    for i, label in enumerate(["Variable", "Estimate", "Robust SE", "t", "p", "95% CI"]):
+        header_cols[i].markdown(label)
+    st.divider()
+    for name in params.index:
+        est = float(params[name])
+        se = float(bse[name])
+        t = float(tvalues[name])
+        p = float(pvalues[name])
+        ci_lo, ci_hi = float(conf_int.loc[name, 0]), float(conf_int.loc[name, 1])
+        est_str = f"{est:.4g}" if abs(est) < 1e-4 or abs(est) >= 1e4 else f"{est:.4f}"
+        se_str = f"{se:.4g}" if abs(se) < 1e-4 or abs(se) >= 1e4 else f"{se:.4f}"
+        t_str = f"{t:.3f}"
+        p_str = _format_p_display(p)
+        ci_str = f"({ci_lo:.2f}, {ci_hi:.2f})"
+        tip = _tip_for_param(name, tooltips)
+        custom_tips = {name: tip} if tip else {}
+        for k, v in tooltips.items():
+            custom_tips.setdefault(k, v)
+        highlight = highlight_var and highlight_var in str(name).lower()
+        _q2_coef_row_robust(name, est_str, se_str, t_str, p_str, ci_str, highlight=highlight, tooltips=custom_tips)
+    st.caption("Hover over ℹ️ for variable definitions. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
 
 
 # Map assumption name to plot filename(s) - Salary Jump model
@@ -806,7 +960,7 @@ def render_question_tab3(label):
             )
         with psm_graph_col:
             st.markdown("#### Results")
-            st.image("q3_plots/psm_graph.png", use_container_width=True)
+            st.image("q3_plots/psm_graph.png", use_column_width=True)
             st.markdown("#### Yearly Wage Penalty Results For Females(%)")
             psm_yearly_results = [
                 {"year": 76, "gap_pct": 2.556195},
@@ -825,41 +979,369 @@ def render_question_tab3(label):
         
     with sub_tab2:
         st.subheader("MLR Approach")
-        st.caption("Description")
-        st.markdown(
-            '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Results")
-        st.markdown(
-        '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
+        # Load same-year models for Q3 Base / Interaction (same as Q1)
+        salary_path_q3 = Path(__file__).parent / "salary.txt"
+        df_q3 = None
+        q3_mls_base = None
+        q3_mls_interact = None
+        if salary_path_q3.exists():
+            try:
+                df_q3 = pd.read_csv(salary_path_q3, sep=r"\s+")
+                q3_mls_base = smf.ols(
+                    formula="salary ~ sex + id + deg + yrdeg + field + startyr + year + rank + admin",
+                    data=df_q3,
+                ).fit(cov_type="HC3")
+                q3_mls_interact = smf.ols(
+                    formula="salary ~ sex + id + deg + yrdeg + field + startyr + year + rank + admin + "
+                    "sex:deg + sex:yrdeg + sex:field + sex:year + sex:startyr + sex:rank + sex:admin + sex:id",
+                    data=df_q3,
+                ).fit(cov_type="HC3")
+            except Exception:
+                pass
+        q3_base_tab, q3_interaction_tab, q3_confounders_tab = st.tabs(["Base", "Interaction", "Attempting to Find Confounders"])
+        with q3_base_tab:
+            st.caption("Results")
+            if "q3_mlr_base_run" not in st.session_state:
+                st.session_state.q3_mlr_base_run = False
+            st.latex(
+                r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
+                r"+ \beta_4 \text{field} + \beta_5 \text{startyr} + \beta_6 \text{year} + \beta_7 \text{rank} "
+                r"+ \beta_8 \text{admin} + \epsilon"
+            )
+            q3_mlr_left, q3_mlr_right = st.columns([1, 1])
+            with q3_mlr_left:
+                if q3_mls_base is not None:
+                    run_q3_base = st.button("Run MLR", key="q3_mlr_base_btn")
+                    if not st.session_state.q3_mlr_base_run:
+                        st.info("Click **Run MLR** (left) to run the regression and see results here.")
+                    hide_q3_base = st.button("Hide Regression Results", key="q3_mlr_base_hide_btn")
+                    if run_q3_base:
+                        st.session_state.q3_mlr_base_run = True
+                    if hide_q3_base:
+                        st.session_state.q3_mlr_base_run = False
+                    st.caption("Same-year OLS (HC3). Show or hide results on the right.")
+                else:
+                    st.caption("Add `salary.txt` to run the model.")
+            with q3_mlr_right:
+                if st.session_state.q3_mlr_base_run and q3_mls_base is not None:
+                    st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
+                    _render_ols_coef_table(q3_mls_base, Q1_MLR_TOOLTIPS, highlight_var="sex")
+        with q3_interaction_tab:
+            st.caption("Results")
+            if "q3_mlr_interaction_run" not in st.session_state:
+                st.session_state.q3_mlr_interaction_run = False
+            st.latex(
+                r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
+                r"+ \beta_4 \text{field} + \beta_5 \text{year} + \beta_6 \text{rank} + \beta_7 \text{admin}"
+            )
+            st.latex(
+                r"\quad {} + \beta_8 (\text{sex} \times \text{deg}) + \beta_9 (\text{sex} \times \text{yrdeg}) "
+                r"+ \beta_{10} (\text{sex} \times \text{field}) + \beta_{11} (\text{sex} \times \text{year}) "
+                r"+ \beta_{12} (\text{sex} \times \text{rank}) + \beta_{13} (\text{sex} \times \text{admin}) + \epsilon"
+            )
+            q3_int_left, q3_int_right = st.columns([1, 1])
+            with q3_int_left:
+                if q3_mls_interact is not None:
+                    run_q3_int = st.button("Run MLR", key="q3_mlr_interaction_btn")
+                    if not st.session_state.q3_mlr_interaction_run:
+                        st.info("Click **Run MLR** (left) to run the regression and see results here.")
+                    hide_q3_int = st.button("Hide Regression Results", key="q3_mlr_interaction_hide_btn")
+                    if run_q3_int:
+                        st.session_state.q3_mlr_interaction_run = True
+                    if hide_q3_int:
+                        st.session_state.q3_mlr_interaction_run = False
+                    st.caption("Same-year OLS with sex interactions (HC3). Show or hide results on the right.")
+                else:
+                    st.caption("Add `salary.txt` to run the model.")
+            with q3_int_right:
+                if st.session_state.q3_mlr_interaction_run and q3_mls_interact is not None:
+                    st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
+                    _render_ols_coef_table(q3_mls_interact, Q1_MLR_TOOLTIPS, highlight_var="sex")
+        with q3_confounders_tab:
+            st.caption("Description")
+            st.markdown(
+                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
                 unsafe_allow_html=True,
-        )
+            )
+            st.caption("Results")
+            if "q3_confounders_run" not in st.session_state:
+                st.session_state.q3_confounders_run = False
+            if "q3_ovb_df" not in st.session_state:
+                st.session_state.q3_ovb_df = None
+            if df_q3 is not None:
+                btn_left, btn_right = st.columns([1, 1])
+                with btn_left:
+                    if st.button("Run: Find impact of other variables on Sex", key="q3_confounders_btn"):
+                        try:
+                            controls = ["id", "deg", "yrdeg", "field", "startyr", "year", "rank", "admin"]
+                            full_formula = "salary ~ sex + " + " + ".join(controls)
+                            m_full = smf.ols(full_formula, data=df_q3).fit(cov_type="HC3")
+                            sex_param = [c for c in m_full.params.index if "sex" in c][0]
+                            full_beta = m_full.params[sex_param]
+                            ovb_results = []
+                            for var in controls:
+                                reduced_controls = [c for c in controls if c != var]
+                                reduced_formula = "salary ~ sex + " + " + ".join(reduced_controls)
+                                m_reduced = smf.ols(reduced_formula, data=df_q3).fit(cov_type="HC3")
+                                reduced_beta = m_reduced.params[sex_param]
+                                delta = full_beta - reduced_beta
+                                percent_impact = (delta / reduced_beta) * 100 if reduced_beta != 0 else 0
+                                ovb_results.append({
+                                    "Omitted Variable": var,
+                                    "Sex Beta (Without it)": reduced_beta,
+                                    "Shift (%)": percent_impact,
+                                })
+                            ovb_df = pd.DataFrame(ovb_results).sort_values(by="Shift (%)", ascending=False)
+                            st.session_state.q3_ovb_df = ovb_df
+                            st.session_state.q3_confounders_run = True
+                        except Exception as e:
+                            st.error(f"Error running analysis: {e}")
+                with btn_right:
+                    if st.button("Hide Analysis", key="q3_confounders_hide_btn", disabled=not st.session_state.q3_confounders_run):
+                        st.session_state.q3_confounders_run = False
+            if st.session_state.q3_confounders_run and st.session_state.q3_ovb_df is not None:
+                ovb_df = st.session_state.q3_ovb_df
+                st.dataframe(ovb_df, use_container_width=True)
+                shift_col = "Shift (%)"
+                ovb_sorted = ovb_df.sort_values(by=shift_col, ascending=True)
+                colors = ["#b22222" if abs(p) >= 10 else "#000080" for p in ovb_sorted[shift_col]]
+                fig_ovb = go.Figure(
+                    go.Bar(
+                        x=ovb_sorted[shift_col],
+                        y=ovb_sorted["Omitted Variable"],
+                        orientation="h",
+                        marker_color=colors,
+                    )
+                )
+                fig_ovb.add_vline(x=-10, line_dash="dash", line_color="gray")
+                fig_ovb.add_vline(x=10, line_dash="dash", line_color="gray")
+                fig_ovb.update_layout(
+                    title="Shift (%) by Omitted Variable",
+                    xaxis_title="Shift (%)",
+                    yaxis_title="Omitted Variable",
+                    margin=dict(l=10, r=10, t=40, b=40),
+                    height=320,
+                    showlegend=False,
+                )
+                fig_ovb.update_yaxes(autorange="reversed")
+                st.plotly_chart(fig_ovb, use_container_width=True, key="q3_ovb_bar")
+            else:
+                if df_q3 is None:
+                    st.caption("Add `salary.txt` to run the analysis.")
+                else:
+                    st.info("Click the button above to run the analysis.")
     with sub_tab3:
         st.subheader("ANOVA and Wald Test")
         anova_col, wald_col = st.columns(2)
         with anova_col:
+            st.subheader("ANOVA")
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "The ANOVA model we used controlled for all the variables and tested the model with \"sex\" against a model without sex."
             )
+            st.markdown("**Model without sex:**")
+            st.latex(
+                r"\begin{aligned} \widehat{\text{salary}} &= \beta_0 + \beta_1 \text{id} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} \\ "
+                r"&\quad + \beta_4 \text{field} + \beta_5 \text{startyr} + \beta_6 \text{year} + \beta_7 \text{rank} \\ "
+                r"&\quad + \beta_8 \text{admin} + \epsilon \end{aligned}"
+            )
+            st.markdown("**Model with sex:**")
+            st.latex(
+                r"\begin{aligned} \widehat{\text{salary}} &= \beta_0 + \beta_1 \text{sex} + \beta_2 \text{id} + \beta_3 \text{deg} \\ "
+                r"&\quad + \beta_4 \text{yrdeg} + \beta_5 \text{field} + \beta_6 \text{startyr} + \beta_7 \text{year} \\ "
+                r"&\quad + \beta_8 \text{rank} + \beta_9 \text{admin} + \epsilon \end{aligned}"
+            )
+            anova_f_stat = None
+            anova_p_val = None
+            mls_model_whole_no_sex = None
+            mls_model_whole_anova = None
+            if df_q3 is not None:
+                try:
+                    mls_model_whole_no_sex = smf.ols(
+                        formula="salary ~ id + deg + yrdeg + field + startyr + year + rank + admin",
+                        data=df_q3,
+                    ).fit()
+                    mls_model_whole_anova = smf.ols(
+                        formula="salary ~ sex + id + deg + yrdeg + field + startyr + year + rank + admin",
+                        data=df_q3,
+                    ).fit()
+                    anova_results_whole = anova_lm(mls_model_whole_no_sex, mls_model_whole_anova)
+                    anova_f_stat = float(anova_results_whole["F"].iloc[1])
+                    pval_col_anova = "Pr(>F)" if "Pr(>F)" in anova_results_whole.columns else "PR(>F)"
+                    anova_p_val = float(anova_results_whole[pval_col_anova].iloc[1])
+                except Exception:
+                    pass
+            if anova_f_stat is not None and anova_p_val is not None:
+                st.markdown(
+                    f"**F-statistic (sex):** {anova_f_stat:.5f} — **P-value (ANOVA):** {anova_p_val:.6f}"
+                )
+            else:
+                st.markdown(
+                    '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
+                    unsafe_allow_html=True,
+                )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            if df_q3 is not None and mls_model_whole_no_sex is not None and mls_model_whole_anova is not None:
+                try:
+                    r2_no_sex = mls_model_whole_no_sex.rsquared
+                    r2_with_sex = mls_model_whole_anova.rsquared
+                    st.markdown("**R² comparison**")
+                    st.write(f"Model without sex: R² = {r2_no_sex:.5f}")
+                    st.write(f"Model with sex: R² = {r2_with_sex:.5f}")
+                    st.write(f"ΔR² = {(r2_with_sex - r2_no_sex):.5f}")
+                    params_no_sex = mls_model_whole_no_sex.params
+                    params_with_sex = mls_model_whole_anova.params
+                    sex_like = [i for i in params_with_sex.index if "sex" in str(i).lower()]
+                    common = [i for i in params_no_sex.index if i in params_with_sex.index and i not in sex_like]
+                    # Only plot variables where coefficient change exceeds 10%
+                    common_large_change = []
+                    for v in common:
+                        c_no = float(params_no_sex[v])
+                        c_with = float(params_with_sex[v])
+                        if c_no != 0:
+                            pct = abs((c_with - c_no) / c_no * 100)
+                            if pct > 10:
+                                common_large_change.append(v)
+                        else:
+                            if abs(c_with - c_no) > 0:
+                                common_large_change.append(v)
+                    plot_vars = common_large_change
+                    if plot_vars:
+                        n_var = len(plot_vars)
+                        fig_anova = make_subplots(
+                            rows=n_var,
+                            cols=1,
+                            subplot_titles=plot_vars,
+                            vertical_spacing=0.06,
+                            shared_xaxes=False,
+                        )
+                        for i, var in enumerate(plot_vars):
+                            c_no = float(params_no_sex[var])
+                            c_with = float(params_with_sex[var])
+                            fig_anova.add_trace(
+                                go.Bar(x=["Without sex"], y=[c_no], marker_color="#000080", name="Without sex", showlegend=(i == 0)),
+                                row=i + 1,
+                                col=1,
+                            )
+                            fig_anova.add_trace(
+                                go.Bar(x=["With sex"], y=[c_with], marker_color="#b22222", name="With sex", showlegend=(i == 0)),
+                                row=i + 1,
+                                col=1,
+                            )
+                        fig_anova.update_layout(
+                            title="Significant Coefficient Value Changes (>10% change) (excluding sex)",
+                            height=max(320, 120 * n_var),
+                            showlegend=True,
+                            barmode="group",
+                        )
+                        for i in range(1, n_var + 1):
+                            fig_anova.update_xaxes(title_text="", row=i, col=1)
+                            fig_anova.update_yaxes(title_text="Coefficient", row=i, col=1)
+                        st.plotly_chart(fig_anova, use_container_width=True, key="q3_anova_coef_bar")
+                    else:
+                        st.caption("No variables with coefficient change &gt; 10%.")
+                except Exception as e:
+                    st.error(f"Error running ANOVA: {e}")
+            else:
+                st.markdown(
+                    '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
+                    unsafe_allow_html=True,
+                )
         with wald_col:
+            st.subheader("Wald Test")
             st.caption("Description")
             st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
+                "Full sample OLS of **salary** on sex, id, deg, yrdeg, field, startyr, year, rank, admin. "
+                "Wald test of all terms uses **HC3** robust standard errors."
             )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
-            )
+            if df_q3 is None:
+                st.warning("Data file `salary.txt` not found. Add it to the project directory to run the Wald test.")
+            else:
+                try:
+                    mls_model_whole = smf.ols(
+                        formula="salary ~ sex + id + deg + yrdeg + field + startyr + year + rank + admin",
+                        data=df_q3,
+                    ).fit(cov_type="HC3")
+                    robust_anova_whole = mls_model_whole.wald_test_terms()
+                    wald_df_q3 = getattr(robust_anova_whole, "result_frame", None) or getattr(robust_anova_whole, "table", None)
+                    if wald_df_q3 is not None and hasattr(wald_df_q3, "to_html"):
+                        wald_df_q3_display = wald_df_q3.copy()
+                        for c in wald_df_q3_display.columns:
+                            if "statistic" in str(c).lower() or str(c).lower() in ("f", "chi2", "wald"):
+                                def _round_stat_q3(v):
+                                    try:
+                                        a = np.asarray(v).flatten()
+                                        return round(float(a[0]), 5) if len(a) else v
+                                    except (TypeError, ValueError, IndexError):
+                                        return v
+                                wald_df_q3_display[c] = wald_df_q3_display[c].apply(_round_stat_q3)
+                        pval_col_q3_display = None
+                        for c in wald_df_q3_display.columns:
+                            cl = str(c).lower()
+                            if "pvalue" in cl or "p>" in cl or "pr>" in cl:
+                                pval_col_q3_display = c
+                                break
+                        if pval_col_q3_display is not None:
+                            wald_df_q3_display[pval_col_q3_display] = wald_df_q3_display[pval_col_q3_display].apply(_format_pval_5digits)
+                        wald_df_q3_display = wald_df_q3_display.astype(str).replace(r"\[\[|\]\]", "", regex=True)
+                        wald_q3_left, wald_q3_right = st.columns([1, 1])
+                        with wald_q3_left:
+                            st.dataframe(wald_df_q3_display, use_container_width=True)
+                            st.markdown("**Download results**")
+                            csv_bytes_q3 = wald_df_q3_display.to_csv(index=True).encode("utf-8")
+                            st.download_button(
+                                "Download Wald test table (CSV)",
+                                data=csv_bytes_q3,
+                                file_name="wald_test_q3_results.csv",
+                                mime="text/csv",
+                                key="wald_q3_download",
+                            )
+                        with wald_q3_right:
+                            stat_col_q3 = None
+                            pval_col_q3 = None
+                            for c in wald_df_q3.columns:
+                                c_lower = str(c).lower()
+                                if stat_col_q3 is None and ("statistic" in c_lower or c_lower in ("f", "chi2", "wald")):
+                                    stat_col_q3 = c
+                                if pval_col_q3 is None and ("pvalue" in c_lower or "p>" in c_lower or "pr>" in c_lower):
+                                    pval_col_q3 = c
+                            if stat_col_q3 is None and len(wald_df_q3.columns) >= 1:
+                                stat_col_q3 = wald_df_q3.select_dtypes(include=[np.number]).columns[0]
+                            if pval_col_q3 is None and len(wald_df_q3.columns) >= 2:
+                                num_cols_q3 = wald_df_q3.select_dtypes(include=[np.number]).columns.tolist()
+                                pval_col_q3 = num_cols_q3[1] if len(num_cols_q3) > 1 else num_cols_q3[0]
+
+                            def _bar_colors_q3(labels, navy="#000080", red="#b22222"):
+                                return [red if "sex" in str(lb).lower() else navy for lb in labels]
+
+                            if stat_col_q3 is not None:
+                                s_q3 = wald_df_q3[stat_col_q3].copy()
+                                if hasattr(s_q3, "values") and s_q3.dtype == object:
+                                    s_q3 = pd.to_numeric(s_q3.astype(str).str.replace(r"[^\d.e\-]", "", regex=True), errors="coerce")
+                                s_q3 = s_q3.dropna().sort_values(ascending=False)
+                                if len(s_q3) > 0:
+                                    x_vals_q3 = np.round(s_q3.values.astype(float), 5)
+                                    fig_stat_q3 = go.Figure(go.Bar(
+                                        x=x_vals_q3, y=s_q3.index.astype(str),
+                                        orientation="h",
+                                        marker_color=_bar_colors_q3(s_q3.index),
+                                    ))
+                                    fig_stat_q3.update_layout(
+                                        title="Statistic by factor",
+                                        xaxis_title=stat_col_q3,
+                                        yaxis_title="",
+                                        margin=dict(l=10, r=10, t=40, b=40),
+                                        height=280,
+                                        showlegend=False,
+                                    )
+                                    fig_stat_q3.update_yaxes(autorange="reversed")
+                                    st.plotly_chart(fig_stat_q3, use_container_width=True, key="wald_q3_stat_bar")
+                    else:
+                        st.text(str(robust_anova_whole))
+                except Exception as e:
+                    st.error(f"Error running Wald test: {e}")
+                    st.text(str(e))
 with tab_q1:
     render_question_tab1("Q1")
 
