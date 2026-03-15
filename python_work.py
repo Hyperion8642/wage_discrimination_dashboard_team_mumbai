@@ -45,8 +45,24 @@ df_m = df[df['sex'] == 'M']
 df_f = df[df['sex'] == 'F']
 
 
+# Multiple Linear Regression (MLR) ANOVA: model with vs without sex
+# predictors: degree, year, field, rank, admin
+starting_df = starting_df.dropna(subset=['salary','deg','yrdeg','field','rank','admin','year'])
 
+model_no_sex = ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year', data=starting_df).fit()
+model_with_sex = ols('salary ~ deg + yrdeg + C(field) + C(rank) + admin + year + C(sex)', data=starting_df).fit()
 
+anova_results = sm.stats.anova_lm(model_no_sex, model_with_sex)
+f_stat = anova_results['F'][1]
+p_val_anova = anova_results['Pr(>F)'][1]
+
+# Print results
+print("\n=== Q1: Starting Salary Analysis ===")
+print(f"Mean Salary (Men): {np.mean(men_start):.2f}")
+print(f"Mean Salary (Women): {np.mean(women_start):.2f}")
+print(f"Mean Difference (Men - Women): {mean_diff:.2f}")
+print(f"Welch t-test: t-statistic = {t_stat:.4f}, p-value = {p_val_t:.4e}")
+print(f"\nANOVA (MLR: model with vs without sex): F-statistic = {f_stat:.4f}, p-value = {p_val_anova:.4f}")
 
 
 
