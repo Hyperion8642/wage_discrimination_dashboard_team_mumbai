@@ -1,7 +1,9 @@
 import streamlit as st
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import statsmodels.formula.api as smf
 
 # Set page config for a wide layout
@@ -54,9 +56,10 @@ def render_question_tab1(label):
         )
 
     with sub_tab2:
-        # Load same-year model once for Wald column and MLR Base tab
+        # Load same-year model once for Wald column and MLR Base / Interaction tabs
         salary_path = Path(__file__).parent / "salary.txt"
         mls_model_same_year = None
+        mls_model_same_year_interact = None
         robust_wald_same_year = None
         if salary_path.exists():
             try:
@@ -67,6 +70,10 @@ def render_question_tab1(label):
                     data=df_same_salary,
                 ).fit(cov_type="HC3")
                 robust_wald_same_year = mls_model_same_year.wald_test_terms()
+                mls_model_same_year_interact = smf.ols(
+                    formula="salary ~ sex + sex * deg + sex * yrdeg + sex * field + sex * year + sex * rank + sex * admin",
+                    data=df_same_salary,
+                ).fit(cov_type="HC3")
             except Exception:
                 pass
 
@@ -112,16 +119,79 @@ def render_question_tab1(label):
                     )
                     if wald_df is not None and hasattr(wald_df, "to_html"):
                         wald_df_display = wald_df.astype(str)
-                        st.dataframe(wald_df_display, use_container_width=True)
-                        st.markdown("**Download results**")
-                        csv_bytes = wald_df_display.to_csv(index=True).encode("utf-8")
-                        st.download_button(
-                            "Download Wald test table (CSV)",
-                            data=csv_bytes,
-                            file_name="wald_test_results.csv",
-                            mime="text/csv",
-                            key="wald_download",
-                        )
+                        wald_tab_left, wald_tab_right = st.columns([1, 1])
+                        with wald_tab_left:
+                            st.dataframe(wald_df_display, use_container_width=True)
+                            st.markdown("**Download results**")
+                            csv_bytes = wald_df_display.to_csv(index=True).encode("utf-8")
+                            st.download_button(
+                                "Download Wald test table (CSV)",
+                                data=csv_bytes,
+                                file_name="wald_test_results.csv",
+                                mime="text/csv",
+                                key="wald_download",
+                            )
+                        with wald_tab_right:
+                            # Infer statistic and pvalue columns (statsmodels naming varies)
+                            stat_col = None
+                            pval_col = None
+                            for c in wald_df.columns:
+                                c_lower = str(c).lower()
+                                if stat_col is None and ("statistic" in c_lower or c_lower in ("f", "chi2", "wald")):
+                                    stat_col = c
+                                if pval_col is None and ("pvalue" in c_lower or "p>" in c_lower or "pr>" in c_lower):
+                                    pval_col = c
+                            if stat_col is None and len(wald_df.columns) >= 1:
+                                stat_col = wald_df.select_dtypes(include=[np.number]).columns[0]
+                            if pval_col is None and len(wald_df.columns) >= 2:
+                                num_cols = wald_df.select_dtypes(include=[np.number]).columns.tolist()
+                                pval_col = num_cols[1] if len(num_cols) > 1 else num_cols[0]
+
+                            def _bar_colors(labels, navy="#000080", red="#b22222"):
+                                return [red if "sex" in str(lb).lower() else navy for lb in labels]
+
+                            if stat_col is not None:
+                                s = wald_df[stat_col].copy()
+                                if hasattr(s, "values") and s.dtype == object:
+                                    s = pd.to_numeric(s.astype(str).str.replace(r"[^\d.e\-]", "", regex=True), errors="coerce")
+                                s = s.dropna().sort_values(ascending=False)
+                                if len(s) > 0:
+                                    fig_stat = go.Figure(go.Bar(
+                                        x=s.values, y=s.index.astype(str),
+                                        orientation="h",
+                                        marker_color=_bar_colors(s.index),
+                                    ))
+                                    fig_stat.update_layout(
+                                        title="Statistic by factor",
+                                        xaxis_title=stat_col,
+                                        yaxis_title="",
+                                        margin=dict(l=10, r=10, t=40, b=40),
+                                        height=280,
+                                        showlegend=False,
+                                    )
+                                    fig_stat.update_yaxes(autorange="reversed")
+                                    st.plotly_chart(fig_stat, use_container_width=True, key="wald_stat_bar")
+                            if pval_col is not None:
+                                p = wald_df[pval_col].copy()
+                                if hasattr(p, "values") and p.dtype == object:
+                                    p = pd.to_numeric(p.astype(str).str.replace(r"[^\d.e\-]", "", regex=True), errors="coerce")
+                                p = p.dropna().sort_values(ascending=False)
+                                if len(p) > 0:
+                                    fig_pval = go.Figure(go.Bar(
+                                        x=p.values, y=p.index.astype(str),
+                                        orientation="h",
+                                        marker_color=_bar_colors(p.index),
+                                    ))
+                                    fig_pval.update_layout(
+                                        title="P-value by factor",
+                                        xaxis_title=pval_col,
+                                        yaxis_title="",
+                                        margin=dict(l=10, r=10, t=40, b=40),
+                                        height=280,
+                                        showlegend=False,
+                                    )
+                                    fig_pval.update_yaxes(autorange="reversed")
+                                    st.plotly_chart(fig_pval, use_container_width=True, key="wald_pval_bar")
                     else:
                         st.text(str(robust_wald_same_year))
                 except Exception:
@@ -137,13 +207,30 @@ def render_question_tab1(label):
                 unsafe_allow_html=True,
             )
             st.caption("Results")
-            if mls_model_same_year is not None:
-                st.text(str(mls_model_same_year.summary()))
-            else:
-                st.markdown(
-                    '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                    unsafe_allow_html=True,
-                )
+            if "mlr_base_run" not in st.session_state:
+                st.session_state.mlr_base_run = False
+            st.latex(
+                r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
+                r"+ \beta_4 \text{field} + \beta_5 \text{startyr} + \beta_6 \text{year} + \beta_7 \text{rank} "
+                r"+ \beta_8 \text{admin} + \epsilon"
+            )
+            mlr_left, mlr_right = st.columns([1, 1])
+            with mlr_left:
+                if mls_model_same_year is not None:
+                    run_clicked = st.button("Run MLR", key="mlr_base_btn")
+                    if not st.session_state.mlr_base_run:
+                        st.info("Click **Run MLR** (left) to run the regression and see results here.")
+                    hide_clicked = st.button("Hide Regression Results", key="mlr_base_hide_btn")
+                    if run_clicked:
+                        st.session_state.mlr_base_run = True
+                    if hide_clicked:
+                        st.session_state.mlr_base_run = False
+                    st.caption("Same-year OLS (HC3). Show or hide results on the right.")
+                else:
+                    st.caption("Add `salary.txt` to run the model.")
+            with mlr_right:
+                if st.session_state.mlr_base_run and mls_model_same_year is not None:
+                    st.text(str(mls_model_same_year.summary()))
 
         with mlr_interaction_tab:
             st.caption("Description")
@@ -152,10 +239,34 @@ def render_question_tab1(label):
                 unsafe_allow_html=True,
             )
             st.caption("Results")
-            st.markdown(
-                '<div style="min-height: 280px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa;"></div>',
-                unsafe_allow_html=True,
+            if "mlr_interaction_run" not in st.session_state:
+                st.session_state.mlr_interaction_run = False
+            st.latex(
+                r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
+                r"+ \beta_4 \text{field} + \beta_5 \text{year} + \beta_6 \text{rank} + \beta_7 \text{admin}"
             )
+            st.latex(
+                r"\quad {} + \beta_8 (\text{sex} \times \text{deg}) + \beta_9 (\text{sex} \times \text{yrdeg}) "
+                r"+ \beta_{10} (\text{sex} \times \text{field}) + \beta_{11} (\text{sex} \times \text{year}) "
+                r"+ \beta_{12} (\text{sex} \times \text{rank}) + \beta_{13} (\text{sex} \times \text{admin}) + \epsilon"
+            )
+            mlr_int_left, mlr_int_right = st.columns([1, 1])
+            with mlr_int_left:
+                if mls_model_same_year_interact is not None:
+                    run_int_clicked = st.button("Run MLR", key="mlr_interaction_btn")
+                    if not st.session_state.mlr_interaction_run:
+                        st.info("Click **Run MLR** (left) to run the regression and see results here.")
+                    hide_int_clicked = st.button("Hide Regression Results", key="mlr_interaction_hide_btn")
+                    if run_int_clicked:
+                        st.session_state.mlr_interaction_run = True
+                    if hide_int_clicked:
+                        st.session_state.mlr_interaction_run = False
+                    st.caption("Same-year OLS with sex interactions (HC3). Show or hide results on the right.")
+                else:
+                    st.caption("Add `salary.txt` to run the model.")
+            with mlr_int_right:
+                if st.session_state.mlr_interaction_run and mls_model_same_year_interact is not None:
+                    st.text(str(mls_model_same_year_interact.summary()))
 
 # Variable tooltips for Q2 MLR (salary jump analysis)
 Q2_VAR_TOOLTIPS = {
