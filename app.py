@@ -596,16 +596,16 @@ def render_question_tab2(label):
         diff_col, _ = st.columns([3, 1])
         with diff_col:
             if st.session_state["q2_step1_image"] == "promoted":
-                st.image("assets/step1_prepared_data.png", use_container_width=True)
+                st.image("q2_plots/step1_prepared_data.png", use_container_width=True)
             else:
-                st.image("assets/step1_salary_diff.png", use_container_width=True)
+                st.image("q2_plots/step1_salary_diff.png", use_container_width=True)
         st.markdown("**Step 1b: Salary Difference EDA**")
         st.markdown("To get a glance at our data, we plotted the density and boxplot of the salary difference to see the distribution of the salary difference between males and females.")
         plot_col1, plot_col2 = st.columns(2)
         with plot_col1:
-            st.image("assets/salary_diff_density.png", use_container_width=True)
+            st.image("q2_plots/salary_diff_density.png", use_container_width=True)
         with plot_col2:
-            st.image("assets/salary_diff_boxplot.png", use_container_width=True)
+            st.image("q2_plots/salary_diff_boxplot.png", use_container_width=True)
         st.markdown("""At a glance, we can see that the density curves of salary jump between the two genders are relatively similar, 
         and the boxplots show a similar median salary jump, with females having a slightly higher median. However males seem to have a larger range and outliers in the data.""")
         st.markdown("**Step 2: Hypotheses & Test**")
