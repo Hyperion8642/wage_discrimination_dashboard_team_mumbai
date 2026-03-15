@@ -288,9 +288,22 @@ with tab_q3:
 
 # --- Q4 TAB ---
 with tab_q4:
-    st.subheader("Q4")
-    st.markdown("""
-    * **Issue 1**: [Insert details here]
-    * **Issue 2**: [Insert details here]
-    * **Issue 3**: [Insert details here]
-    """)
+    st.subheader("Limitations & Considerations")
+    st.markdown("Key limitations and caveats when generalizing the wage discrimination analysis:")
+    st.divider()
+
+    lim1, lim2 = st.columns(2)
+    with lim1:
+        with st.expander("**Limited Dataset**", expanded=False):
+            st.markdown("The data may not support extrapolation or predictions beyond the observed time range and population. The data is from more than 20 years ago, and may not be representative of the current labor market.")
+        with st.expander("**Potential Sampling Bias**", expanded=False):
+            st.markdown("The data is only from one institution, and may not be representative of all institutions. This is not be representative of all faculty or institutions.")
+        with st.expander("**Gender imbalance**", expanded=False):
+            st.markdown("The dataset has far more male than female faculty; estimates for women may be less precise or more sensitive to outliers.")
+    with lim2:
+        with st.expander("**Correlation doesn’t mean causation**", expanded=False):
+            st.markdown("Observed associations (e.g., sex and salary) may be driven by unmeasured factors rather than a direct causal effect.")
+        with st.expander("**Potential confounding variables**", expanded=False):
+            st.markdown("Variables such as teaching ratings, grants, or publications were not controlled for and could explain part of the observed differences.")
+        with st.expander("**Generalizing inflation**", expanded=False):
+            st.markdown("Salary levels and gaps may not translate directly to other eras or settings due to inflation and labor market differences.")
