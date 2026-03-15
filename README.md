@@ -28,5 +28,7 @@ Overall, this project applies statistical methods to examine an important questi
 By analyzing the relationship between gender and faculty salaries while controlling for relevant characteristics, we aim to provide a clear and evidence-based assessment of whether wage discrimination may be present in this institutional context.
 
 Sincerely,
+
 Team Mumbai
+
 DATA 557
