@@ -92,7 +92,7 @@ with tab_eda:
     """, unsafe_allow_html=True)
     
     st.subheader("EDA")
-    
+    st.markdown("""Click on the expanders below to see key findings from our EDA.""")
     with st.expander("**Gender Distribution by Academic Field**", expanded=False):
         st.write("In this dataset, there were a total of 19,792 faculty members, with most (15,866) of them being male and 3926 of them being female. When looking at the breakdown of academic fields across genders in the dataset, men make up a larger proportion of faculty members across all three different field types (Arts, Other, and Professional). The most drastic difference in proportions is in the Professional category (Table 1), where men make up 89.8% percent of all members compared to women making up 10.2%, while the least drastic difference is the Arts category, where men make up 71.8% of the members and women make up 28.2%. These are explained by segmenting the academic fields by gender.")
         st.write("Looking at Figure 1a and 1b, the proportion of men who are Professional faculty members more than doubles that of the proportion of women (21.6% for men, 9.9% for women), while a greater proportion of women are Arts faculty members (20.4%) relative to the proportion of men (12.8%). For both genders, faculty members belonging to the Other field made up the largest proportion, with the women having a slightly higher proportion than the men (69.7% relative to 65.6%).")
@@ -1484,6 +1484,9 @@ with tab_q3:
 with tab_q4:
     st.subheader("Limitations & Considerations")
     st.markdown("Key limitations and caveats when generalizing the wage discrimination analysis:")
+    st.markdown("""Click on the expanders below to see key limitations and caveats when generalizing 
+                the wage discrimination analysis.""")
+
     st.divider()
 
     lim1, lim2 = st.columns(2)
