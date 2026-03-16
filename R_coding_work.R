@@ -1,4 +1,5 @@
 #------------------------Q1: T Test-------------------------#
+
 df = read.table("salary.txt", header = TRUE, sep="")
 df_filter = df %>% filter(startyr == year)
 df_male = df %>% filter(sex == "M") %>% filter(startyr == year)
@@ -8,6 +9,7 @@ df_female = df %>% filter(sex == "F") %>% filter(startyr == year)
 t.test(df_male$salary, df_female$salary)
 # Fit MLR model
 summary(lm(salary ~ sex+ deg + yrdeg + year+  field + rank + admin, data=df_filter))
+
 #-----------------------------------------------------------#
 #------------------------Q2: T Test-------------------------#
 salary <- read.table("salary.txt", header = TRUE)
@@ -34,6 +36,7 @@ promoted <- salary %>%
 
 # Perform two sample T test
 t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE)
+
 #------------------------------------------------------------------------------#
 #-------------------------------- Q2: MLR -------------------------#
 # code for multiple linear regression
