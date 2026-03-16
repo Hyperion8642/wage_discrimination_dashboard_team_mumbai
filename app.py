@@ -3,12 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import statsmodels.formula.api as smf
 from statsmodels.stats.anova import anova_lm
+import statsmodels.api as sm
+import seaborn as sns
+import scipy.stats as stats
 
 
 def _format_pval_5digits(v):
@@ -61,9 +62,6 @@ def _render_wald_table_with_tooltips(wald_df_display, tooltips_dict=None):
             row_cols[i + 1].text(str(val) if not isinstance(val, str) else val)
     st.caption("Hover over ℹ️ for term definitions.")
 
-import statsmodels.api as sm
-import seaborn as sns
-import scipy.stats as stats
 
 # Set page config for a wide layout
 st.set_page_config(layout="wide")
@@ -235,100 +233,98 @@ def render_question_tab1(label):
     # Nested Tabs: Uncontrolled vs Controlled
     sub_tab1, sub_tab2 = st.tabs(["Uncontrolled", "Controlled"])
     
-    with sub_tab1:
-        st.markdown("## T-Test")
-        
-        # Initialize session state for T-test block
-        if 'ttest_state' not in st.session_state:
+    @st.fragment
+    def _render_uncontrolled_tab():
+        if "ttest_state" not in st.session_state:
             st.session_state.ttest_state = 0
-        
-        # Assumptions data
+        if "perm_state" not in st.session_state:
+            st.session_state.perm_state = 0
+        # Apply pending advances at start so next run shows new step and old button is gone
+        if "ttest_pending" in st.session_state:
+            st.session_state.ttest_state = st.session_state.ttest_pending
+            del st.session_state["ttest_pending"]
+        if "perm_pending" in st.session_state:
+            st.session_state.perm_state = st.session_state.perm_pending
+            del st.session_state["perm_pending"]
+
+        st.markdown("## T-Test")
         assumptions = [
             ("Independence", "After matching the start year on the current year, all observations are independent of each other."),
             ("Normality", "With a sample size of over 19,000 faculty members, the distribution of the data is approximately normal, and the t-test is robust to violations of normality."),
             ("Homogeneity of Variance", "A Welch's t-test is used to account for the difference in variances between the two groups so homogeneity of variance is not a concern."),
             ("Random Sampling", "The data is all faculty so random sampling is not a concern.")
         ]
-        
-        # T-test interactive block
-        if st.session_state.ttest_state == 0:
-            # Initial state - Click to explore
+        ts = st.session_state.ttest_state
+        ps = st.session_state.perm_state
+
+        # T-test: show only the advance button for current step; store advance in pending so it applies next run
+        if ts == 0:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button("Click here to explore T-test", key="ttest_explore", use_container_width=True):
-                    st.session_state.ttest_state = 1
+                    st.session_state.ttest_pending = 1
                     st.rerun()
-        elif st.session_state.ttest_state == 1:
-            # Goal state
-            st.markdown("#### Goal")
-            st.write("Shuffle the ‘sex’ label and observe how extreme our observed difference will be to random labeling. If the difference is extreme, we can reject the null hypothesis that the average salaries are the same between males and females.")
+        elif ts == 1:
             col_spacer, col_btn = st.columns([8, 1])
             with col_btn:
                 if st.button("Next", key="ttest_goal_next"):
-                    st.session_state.ttest_state = 2
+                    st.session_state.ttest_pending = 2
                     st.rerun()
-        elif 2 <= st.session_state.ttest_state <= 5:
-            # Assumptions states (2-5)
-            current_assumption_idx = st.session_state.ttest_state - 2
+        elif 2 <= ts <= 5:
+            col_spacer, col_btn = st.columns([8, 1])
+            with col_btn:
+                if st.button("Next", key=f"ttest_next_{ts}"):
+                    st.session_state.ttest_pending = ts + 1
+                    st.rerun()
+
+        ts = st.session_state.ttest_state
+        if ts == 1:
+            st.markdown("#### Goal")
+            st.write("Shuffle the ‘sex’ label and observe how extreme our observed difference will be to random labeling. If the difference is extreme, we can reject the null hypothesis that the average salaries are the same between males and females.")
+        elif 2 <= ts <= 5:
+            current_assumption_idx = ts - 2
             st.markdown("#### Check Assumptions")
             for i in range(current_assumption_idx + 1):
                 name, desc = assumptions[i]
                 st.write(f"**{name}:** {desc}")
-            
-            col_spacer, col_btn = st.columns([8, 1])
-            with col_btn:
-                if st.button("Next", key=f"ttest_next_{st.session_state.ttest_state}"):
-                    st.session_state.ttest_state += 1
-                    st.rerun()
-        else:
-            # Results state
+        elif ts >= 6:
             st.markdown("#### Results")
             res_c1, res_c2 = st.columns(2)
             with res_c1:
-                st.write("- **Test Statistic:** -12.00")
-                st.write("- **p-value:** 0.00")
+                st.write("- **Test Statistic:** 4.13")
+                st.write("- **p-value:** 0.001")
                 st.write("- **95% CI:** [218.0, 612.4]")
             with res_c2:
                 st.info("Difference in average salaries are significant without controlling other variables.")
-            
-            col_spacer, col_btn = st.columns([6, 2])
-            with col_btn:
-                st.markdown('''
-                <a href="#permutation-test-section" onclick="document.getElementById('permutation-test-section').scrollIntoView({behavior: 'smooth'}); return false;" style="text-decoration: none;">
-                    <button style="padding: 0.5rem 1rem; cursor: pointer; background-color: transparent; border: 1px solid #ccc; border-radius: 4px; color: inherit;">Explore Permutation Test</button>
-                </a>
-                ''', unsafe_allow_html=True)
+            if st.button("Hide results", key="ttest_hide_results"):
+                st.session_state.ttest_state = 0
+                st.rerun()
 
         st.markdown('<div id="permutation-test-section" style="padding-top: 10px;"></div>', unsafe_allow_html=True)
         st.markdown("## Permutation Test")
-        
-        # Initialize session state for Permutation Test block
-        if 'perm_state' not in st.session_state:
-            st.session_state.perm_state = 0
-        
-        # Permutation Test interactive block
-        if st.session_state.perm_state == 0:
-            # Initial state - Click to explore
+
+        if ps == 0:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button("Click here to explore Permutation Test", key="perm_explore", use_container_width=True):
-                    st.session_state.perm_state = 1
+                    st.session_state.perm_pending = 1
                     st.rerun()
-        elif st.session_state.perm_state == 1:
-            # Goal state
+        elif ps == 1:
+            col_spacer, col_btn = st.columns([8, 1])
+            with col_btn:
+                if st.button("Next", key="perm_goal_next"):
+                    st.session_state.perm_pending = 2
+                    st.rerun()
+
+        ps = st.session_state.perm_state
+        if ps == 1:
             st.markdown("#### Goal")
             st.write("Compare average starting salaries between males and females using a non-parametric approach.")
             st.markdown("##### Hypotheses")
             st.write("- **H₀:** μ(males) - μ(females) = 0")
             st.write("- **Hₐ:** μ(males) - μ(females) ≠ 0")
             st.write("*(If null is true, we should expect our p-value to be large.)*")
-            col_spacer, col_btn = st.columns([8, 1])
-            with col_btn:
-                if st.button("Next", key="perm_goal_next"):
-                    st.session_state.perm_state = 2
-                    st.rerun()
-        else:
-            # Results state
+        elif ps >= 2:
             perm_col_left, perm_col_right = st.columns(2)
             with perm_col_left:
                 st.markdown("#### Results")
@@ -336,6 +332,12 @@ def render_question_tab1(label):
                 st.success("At the 5% significance level, we can reject the null hypothesis that the average salaries are the same between males and females.")
             with perm_col_right:
                 st.image("perm_test.png")
+            if st.button("Hide results", key="perm_hide_results"):
+                st.session_state.perm_state = 0
+                st.rerun()
+
+    with sub_tab1:
+        _render_uncontrolled_tab()
 
     with sub_tab2:
         # Load same-year model once for Wald column and MLR Base / Interaction tabs
@@ -600,8 +602,8 @@ def render_question_tab1(label):
                 st.session_state.mlr_base_run = False
             st.latex(
                 r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
-                r"+ \beta_4 \text{field} + \beta_5 \text{startyr} + \beta_6 \text{year} + \beta_7 \text{rank} "
-                r"+ \beta_8 \text{admin} + \epsilon"
+                r"+ \beta_4 \text{field} + \beta_5 \text{year} + \beta_6 \text{rank} "
+                r"+ \beta_7 \text{admin} + \epsilon"
             )
             mlr_left, mlr_right = st.columns([1, 1])
             with mlr_left:
@@ -834,8 +836,9 @@ def render_question_tab2(label):
         We filtered our dataframe to all staff who were promoted to full time from associate level. 
         We then calculated the salary difference between the first year they were a full professor, 
         and the last year associate professor. You can see an example of the data below, 
-        where we first filtered the data to only include promoted professors, and then calculated the salary difference for each professor.
-        In total we had 545 professors that were promoted to full time from associate level.
+        where we first filtered the data to only include promoted professors, and then calculated 
+        the salary difference for each professor. In total we had 545 professors that were promoted 
+        to full time from associate level.
         """)
         if "q2_step1_image" not in st.session_state:
             st.session_state["q2_step1_image"] = "promoted"
@@ -851,18 +854,20 @@ def render_question_tab2(label):
         diff_col, _ = st.columns([3, 1])
         with diff_col:
             if st.session_state["q2_step1_image"] == "promoted":
-                st.image("q2_plots/step1_prepared_data.png", use_container_width=True)
+                st.image("q2_plots/step1_prepared_data.png", use_column_width=True)
             else:
-                st.image("q2_plots/step1_salary_diff.png", use_container_width=True)
+                st.image("q2_plots/step1_salary_diff.png", use_column_width=True)
         st.markdown("**Step 1b: Salary Difference EDA**")
-        st.markdown("To get a glance at our data, we plotted the density and boxplot of the salary difference to see the distribution of the salary difference between males and females.")
+        st.markdown("""To get a glance at our data, we plotted the density and boxplot of the salary difference to 
+        see the distribution of the salary difference between males and females.""")
         plot_col1, plot_col2 = st.columns(2)
         with plot_col1:
-            st.image("q2_plots/salary_diff_density.png", use_container_width=True)
+            st.image("q2_plots/salary_diff_density.png", use_column_width=True)
         with plot_col2:
-            st.image("q2_plots/salary_diff_boxplot.png", use_container_width=True)
-        st.markdown("""At a glance, we can see that the density curves of salary jump between the two genders are relatively similar, 
-        and the boxplots show a similar median salary jump, with females having a slightly higher median. However males seem to have a larger range and outliers in the data.""")
+            st.image("q2_plots/salary_diff_boxplot.png", use_column_width=True)
+        st.markdown("""At a glance, we can see that the density curves of salary jump between the two genders are 
+        relatively similar, and the boxplots show a similar median salary jump, with females having a slightly 
+        higher median. However males seem to have a larger range and outliers in the data.""")
         st.markdown("**Step 2: Hypotheses & Test**")
         st.markdown("""
         Now we can test the hypothesis. We will use a two sample T-Test to test the hypothesis.
@@ -875,8 +880,8 @@ def render_question_tab2(label):
         - alpha = 0.05
         t.test(salary_diff ~ sex, data = promoted, var.equal = TRUE)
 
-        \n We are using the var.equal = TRUE argument because we are assuming that the variance is equal between the two groups.
-        And since our sample size is large, we can use the t-distribution to approximate the normal distribution.
+        \n We are using the var.equal = TRUE argument because we are assuming that the variance is equal between the 
+        two groups. And since our sample size is large, we can use the t-distribution to approximate the normal distribution.
         """)
 
         st.markdown("**Step 3: Results**")
@@ -908,8 +913,8 @@ def render_question_tab2(label):
         with m1_tab:
             st.markdown("### Data")
             st.markdown("""
-            Sample: Professors promoted from Associate to Full. For each professor, we kept the row corresponding to their last year as Associate, and defined 
-            salary jump = (first-year Full salary) − (last-year Associate salary). Covariates are measured at that last Associate year.
+            Sample: Professors promoted from Associate to Full. For each professor, we kept the row corresponding to their last year as Associate, 
+            and defined salary jump = (first-year Full salary) − (last-year Associate salary). Covariates are measured at that last Associate year.
             """)
             
             st.markdown("### Final Model")
@@ -964,8 +969,9 @@ def render_question_tab2(label):
             st.markdown("### Data")
             st.markdown("""
             The goal is to consider the difference in salary range between males and females within the promoted professors. 
-			By modeling the first-year salary as a full professor, we can evaulate the salary jump in a fair manner and determine if there is a wage discrimination between males and females who were promoted.
-			This aspect focuses less on the salary jump and more on the final salary of full professors, which addresses Question 3 more than Question 2.
+			By modeling the first-year salary as a full professor, we can evaulate the salary jump in a fair manner and determine 
+            if there is a wage discrimination between males and females who were promoted. This aspect focuses less on the salary 
+            jump and more on the final salary of full professors, which addresses Question 3 more than Question 2.
 			Sample: Professors promoted from Associate to Full. For each professor, we kept the first year they held the Full rank.
             Outcome: first-year Full professor salary.
             """)
@@ -1020,12 +1026,12 @@ def render_question_tab3(label):
     st.write(f"**Results Summary for {label}**:")
     st.markdown(
         """
-        - Our models reveal a statistically significant gender-based wage disparity in baseline starting salaries.
-        - When isolating the promotion process, we found no evidence of discrimination in the specific salary increases granted when transitioning to Full Professor.
-        - However, because the initial wage gap is never corrected, significant salary disparities remain present during a professor's first year at the Full Professor rank.
+        - All things considered, our models reveal a statistically significant gender-based wage disparity.
+        - However, there were many other factors that could obscure the impact of sex on this disparity.
+        - Moreover, depending on which subgroups are and salary changes are being compared, 
+        there are cases where sex appears to have a negligible impact on salary.
         """
     )
-    
     # Nested Tabs: Uncontrolled vs Controlled
     sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Propensity Score Matching", "MLR Approach", "ANOVA and Wald Test"])
     
@@ -1101,13 +1107,19 @@ def render_question_tab3(label):
                 pass
         q3_base_tab, q3_interaction_tab, q3_confounders_tab = st.tabs(["Base", "Interaction", "Attempting to Find Confounders"])
         with q3_base_tab:
-            st.caption("Results")
+            st.markdown("#### Result")
+            st.markdown("""After running the MLR, we can see that the p-value for thesex variable is statistically significant at 
+            the 0.05 level. The coefficient of the sex variable is 284.66. This means that there is a significant difference in average 
+            salary between male and female faculty members, keeping all other factors constant. This is consistent with the findings of 
+            the T-test and the Permutation Test.However, similar to the  MLR in Q1, the p-value for all the other variables is also 
+            statistically significant at the 0.05 level.""")
+        
             if "q3_mlr_base_run" not in st.session_state:
                 st.session_state.q3_mlr_base_run = False
             st.latex(
                 r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
                 r"+ \beta_4 \text{field} + \beta_5 \text{startyr} + \beta_6 \text{year} + \beta_7 \text{rank} "
-                r"+ \beta_8 \text{admin} + \epsilon"
+                r"+ \beta_8 \text{admin} +\beta_9 \text{id} + \epsilon"
             )
             q3_mlr_left, q3_mlr_right = st.columns([1, 1])
             with q3_mlr_left:
@@ -1128,17 +1140,28 @@ def render_question_tab3(label):
                     st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
                     _render_ols_coef_table(q3_mls_base, Q1_MLR_TOOLTIPS, highlight_var="sex")
         with q3_interaction_tab:
-            st.caption("Results")
+            st.markdown("#### Result")
+            st.markdown("""After running the interaction MLR, we can see that the p-value of the sex variable remains 
+            statistically significant at the 0.05 level, but the coefficient of the sex variable is now -3537.62. Compared
+            to the 284.66 in the base MLR, the sign of the sex variable's coefficient value has flipped and the magnitude 
+            has drastically increased, seemingly indicating that the salary difference has reversed and widened when taking
+            the impact of other variables on sex into account. The interaction terms between sex and deg,field (Other), rank, 
+            year, admin and startyr were all statistically significant at the 0.05 level. To better quantify the exact impact 
+            of each varibale on the impact of sex, we then considered how dropping each one of these variables would affect the 
+            coefficient of sex.  
+           """)
+        
             if "q3_mlr_interaction_run" not in st.session_state:
                 st.session_state.q3_mlr_interaction_run = False
             st.latex(
                 r"\widehat{\text{salary}} = \beta_0 + \beta_1 \text{sex} + \beta_2 \text{deg} + \beta_3 \text{yrdeg} "
-                r"+ \beta_4 \text{field} + \beta_5 \text{year} + \beta_6 \text{rank} + \beta_7 \text{admin}"
+                r"+ \beta_4 \text{field} + \beta_5 \text{year} + \beta_6 \text{rank} + \beta_7 \text{admin} + \beta_8 \text{id}"
             )
             st.latex(
-                r"\quad {} + \beta_8 (\text{sex} \times \text{deg}) + \beta_9 (\text{sex} \times \text{yrdeg}) "
-                r"+ \beta_{10} (\text{sex} \times \text{field}) + \beta_{11} (\text{sex} \times \text{year}) "
-                r"+ \beta_{12} (\text{sex} \times \text{rank}) + \beta_{13} (\text{sex} \times \text{admin}) + \epsilon"
+                r"\quad {} + \beta_9 (\text{sex} \times \text{deg}) + \beta_{10} (\text{sex} \times \text{yrdeg}) "
+                r"+ \beta_{11} (\text{sex} \times \text{field}) + \beta_{12} (\text{sex} \times \text{year}) "
+                r"+ \beta_{13} (\text{sex} \times \text{rank}) + \beta_{14} (\text{sex} \times \text{admin}) "
+                r"+ \beta_{15} (\text{sex} \times \text{id}) \epsilon"
             )
             q3_int_left, q3_int_right = st.columns([1, 1])
             with q3_int_left:
@@ -1159,12 +1182,13 @@ def render_question_tab3(label):
                     st.caption("Standard errors: HC3 robust. Significance: *** p<0.001, ** p<0.01, * p<0.05, . p<0.1")
                     _render_ols_coef_table(q3_mls_interact, Q1_MLR_TOOLTIPS, highlight_var="sex")
         with q3_confounders_tab:
-            st.caption("Description")
-            st.markdown(
-                '<div style="min-height: 80px; border: 1px dashed #ccc; border-radius: 6px; background: #fafafa; margin-bottom: 1rem;"></div>',
-                unsafe_allow_html=True,
-            )
-            st.caption("Results")
+            st.markdown("#### Result")
+            st.markdown("""We created a loop where we removed 1 variable at a time from the full MLR, and seeing how the 
+            coefficient of sex shifted. Shifts of over 10% would be considered significant. Based on this analysis, we 
+            found that the Year variable decreases the impact of sex on salary. In contrast, Deg, YrDeg, Rank, and Field 
+            were all factors that increased the impact of sex on salary. Many of these factors also had interaction terms 
+            with the sex variable that were statistically significant for the MLR in Q1 and the interaction MLR in Q3.""")
+                    
             if "q3_confounders_run" not in st.session_state:
                 st.session_state.q3_confounders_run = False
             if "q3_ovb_df" not in st.session_state:
